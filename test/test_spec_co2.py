@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Offline regression tests for the verified CO2 instance override."""
 import copy
+import importlib
 import json
 from pathlib import Path
 from unittest.mock import AsyncMock
@@ -16,10 +17,12 @@ NEW3PR_URN = (
 
 
 @pytest_asyncio.fixture(name='co2_parser')
-async def co2_parser_fixture(tmp_path, monkeypatch):
-    from miot.common import MIoTHttp
-    from miot.miot_spec import MIoTSpecParser
-    from miot.miot_storage import MIoTStorage
+async def co2_parser_fixture(tmp_path, monkeypatch, request):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parent.parent))
+    namespace = getattr(request, 'param', 'miot')
+    common = importlib.import_module(f'{namespace}.common')
+    spec_module = importlib.import_module(f'{namespace}.miot_spec')
+    storage_module = importlib.import_module(f'{namespace}.miot_storage')
 
     fixture_path = Path(__file__).parent / 'fixtures'
     instances = {
@@ -38,8 +41,9 @@ async def co2_parser_fixture(tmp_path, monkeypatch):
         # This test has no dependency on current network translations.
         return {}
 
-    monkeypatch.setattr(MIoTHttp, 'get_json_async', get_json)
-    parser = MIoTSpecParser(lang='en', storage=MIoTStorage(str(tmp_path)))
+    monkeypatch.setattr(common.MIoTHttp, 'get_json_async', get_json)
+    parser = spec_module.MIoTSpecParser(
+        lang='en', storage=storage_module.MIoTStorage(str(tmp_path)))
     monkeypatch.setattr(parser._std_lib, 'refresh_async',
                         AsyncMock(return_value=True))
     await parser.init_async()

@@ -53,5 +53,9 @@ explicitly skip when it is absent. In an isolated Home Assistant environment,
 and registries, mocking only communication. It verifies metadata/identity,
 user rename retention, add/remove/re-add, timer cancellation, late callbacks,
 valid decreases, boundaries and invalid inputs. It does not connect devices
-or run a production restart. Integration-level setup/unload and gateway
-routing have separate acceptance requirements.
+or run a production restart. An additional entry test calls the real
+integration setup/unload/remove
+functions across two setup cycles, using the real parser, storage, sensor
+setup and registries. OAuth/client communication and platform forwarding are
+mocked; other platform implementations and real certificate rotation are not
+part of this test. Gateway routing has separate acceptance requirements.
