@@ -55,3 +55,11 @@ manifest/tag checks, notices, no overwrite and runtime-material rejection.
 Rollback uses normal revert/new corrective versions, preserving public tags
 and Recorder history. Refresh cached conversion rules when reverting a Spec
 rule. Do not install a release to production as part of packaging validation.
+
+The current Hassfest requirement rule prohibits custom integrations from
+redeclaring Home Assistant core dependencies. Cryptography is therefore
+provided by HA, not listed again in the component manifest. The minimum
+advertised HA 2024.4.4 pyproject already declares cryptography==42.0.5;
+this metadata check is not a complete runtime compatibility matrix.
+See the [HA manifest rule](https://developers.home-assistant.io/docs/creating_integration_manifest/#custom-integration-requirements)
+and [minimum-version dependencies](https://github.com/home-assistant/core/blob/2024.4.4/pyproject.toml).
