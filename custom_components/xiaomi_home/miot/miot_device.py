@@ -119,6 +119,9 @@ except ImportError:
 
 _LOGGER = logging.getLogger(__name__)
 
+_MIAOMIAOCE_CO2_URN = (
+    'urn:miot-spec-v2:device:air-monitor:0000A008:miaomiaoce-co2:1')
+
 
 def ha_entity_domain(entity: Entity) -> str:
     """Return the Home Assistant platform domain of an entity.
@@ -305,15 +308,19 @@ class MIoTDevice:
     ) -> int:
         key: str = f'p.{siid}.{piid}'
 
-        def _on_prop_changed(params: dict, ctx: Any) -> None:
-            for handler in self._value_sub_list[key].values():
-                handler(params, ctx)
-
         sub_id = self.__gen_sub_id()
         if key in self._value_sub_list:
             self._value_sub_list[key][str(sub_id)] = handler
         else:
-            self._value_sub_list[key] = {str(sub_id): handler}
+            handlers = {str(sub_id): handler}
+            self._value_sub_list[key] = handlers
+
+            def _on_prop_changed(params: dict, ctx: Any) -> None:
+                # Capture this subscription generation. Unsubscribe empties
+                # it, so queued callbacks cannot reach a replacement entity.
+                for callback in list(handlers.values()):
+                    callback(params, ctx)
+
             self.miot_client.sub_prop(
                 did=self._did, handler=_on_prop_changed, siid=siid, piid=piid)
         return sub_id
@@ -1382,21 +1389,35 @@ class MIoTPropertyEntity(Entity):
                 'get property failed, not readable, %s, %s',
                 self.entity_id, self.name)
             return None
-        value: Any = self.spec.value_format(
-            await self.miot_device.miot_client.get_prop_async(
-                did=self.miot_device.did, siid=self.spec.service.iid,
-                piid=self.spec.iid))
+        value: Any = await self.miot_device.miot_client.get_prop_async(
+            did=self.miot_device.did, siid=self.spec.service.iid,
+            piid=self.spec.iid)
+        if not self.__is_valid_value(value):
+            return None
+        value = self.spec.value_format(value)
         value = self.spec.eval_expr(value)
         result = self.spec.value_precision(value)
         return result
 
     def __on_value_changed(self, params: dict, ctx: Any) -> None:
         _LOGGER.debug('property changed, %s', params)
+        if not self.__is_valid_value(params.get('value')):
+            return
         value: Any = self.spec.value_format(params['value'])
         value = self.spec.eval_expr(value)
         self._value = self.spec.value_precision(value)
         if not self._pending_write_ha_state_timer:
             self.async_write_ha_state()
+
+    def __is_valid_value(self, value: Any) -> bool:
+        # Only this verified instance changes its integer resolution. Validate
+        # before formatting so bools, strings and fractions cannot become ppm.
+        if (self.miot_device.spec_instance.urn != _MIAOMIAOCE_CO2_URN
+                or self.service.iid != 3 or self.spec.iid != 1029):
+            return True
+        return (isinstance(value, int) and not isinstance(value, bool)
+                and self._value_range is not None
+                and self._value_range.min_ <= value <= self._value_range.max_)
 
     def __on_device_state_changed(
         self, key: str, state: MIoTDeviceState
