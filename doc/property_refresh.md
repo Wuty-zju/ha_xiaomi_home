@@ -31,7 +31,11 @@ matched to the original queued object, so a late response after teardown
 cannot dispatch to a new generation. HTTP coalesced reads likewise check the
 original request/Future, ignore completed or cancelled Futures, and shield
 the shared Future from cancellation by one caller. Transport failures finish
-waiting HTTP reads with None rather than leave dead Futures cached.
+waiting HTTP reads with None rather than leave dead Futures cached. Native
+local MIPS replies also check the Future on the main loop before completion;
+a late reply after cancellation or an already completed reply is harmless.
+The check runs inside the queued callback to cover cancellation between
+receiving and dispatching a reply.
 
 Offline regressions exercise the real MIoTClient and MIoTHttpClient methods
 with mocked communication only. The MIoTClient cases need Home Assistant and
@@ -39,4 +43,7 @@ explicitly skip when it is absent; HTTP cases run with the existing core test
 fixture. Tests cover partial errors/missing rows, bad identities/codes/shapes,
 0/False, finite retry budgets, AUTO/CLOUD, qualification, batch/device limits,
 exceptions, teardown and late replies. These tests do not prove a particular
-physical device or gateway implements the requested property.
+physical device or gateway implements the requested property. Native MIPS
+request tests use the real request coroutine with only transport registration
+mocked, including late cancellation, duplicate scheduling and a reply from
+another thread. No certificate registration or connection is started.

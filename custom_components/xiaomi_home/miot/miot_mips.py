@@ -1631,8 +1631,13 @@ class MipsLocalClient(_MipsClient):
 
         def on_msg_reply(payload: str, ctx: Any):
             fut: asyncio.Future = ctx
-            if fut:
-                self.main_loop.call_soon_threadsafe(fut.set_result, payload)
+
+            def complete_reply():
+                # Cancellation can happen before this queued callback runs.
+                if fut and not fut.done():
+                    fut.set_result(payload)
+
+            self.main_loop.call_soon_threadsafe(complete_reply)
         if not self.__request_external(
                 topic=topic,
                 payload=payload,
