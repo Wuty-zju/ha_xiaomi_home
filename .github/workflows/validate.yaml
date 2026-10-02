@@ -4,10 +4,18 @@ on:
   push:
     branches:
       - main
+      - fix/miaomiaoce-co2-integer-ppm
+      - fix/property-refresh-partial-results
+      - fix/config-entry-unload-lifecycle
+      - ci/fork-release-packaging
+      - integrate/fork-features
   pull_request:
     branches:
       - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   validate-hassfest:

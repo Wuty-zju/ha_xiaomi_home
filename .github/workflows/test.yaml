@@ -4,10 +4,18 @@ on:
   push:
     branches:
       - main
+      - fix/miaomiaoce-co2-integer-ppm
+      - fix/property-refresh-partial-results
+      - fix/config-entry-unload-lifecycle
+      - ci/fork-release-packaging
+      - integrate/fork-features
   pull_request:
     branches:
       - main
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check-rule-format:
@@ -19,7 +27,7 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest pytest-asyncio pytest-dependency zeroconf paho.mqtt psutil cryptography slugify
+          pip install pytest pytest-asyncio pytest-dependency zeroconf paho.mqtt psutil cryptography python-slugify aiohttp PyYAML
 
       - name: Check rule format with pytest
         run: |
@@ -28,3 +36,22 @@ jobs:
       - name: Unit test with pytest
         run: |
           pytest -v -s -m github ./test/
+
+  home-assistant-regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Prepare disposable Home Assistant test image
+        run: |
+          mkdir -p "$RUNNER_TEMP/xiaomi-home-test"
+          printf '%s\n' \
+            'FROM ghcr.io/home-assistant/home-assistant:2026.9.4' \
+            'RUN python -m pip install pytest pytest-asyncio pytest-dependency' \
+            > "$RUNNER_TEMP/xiaomi-home-test/Dockerfile"
+          docker build -t xiaomi-home-test "$RUNNER_TEMP/xiaomi-home-test"
+      - name: Run offline regressions with real Home Assistant classes
+        run: |
+          docker run --rm --network none --entrypoint python \
+            -e PYTHONDONTWRITEBYTECODE=1 \
+            -v "$GITHUB_WORKSPACE:/workspace" -w /workspace \
+            xiaomi-home-test -m pytest -q -m github ./test/

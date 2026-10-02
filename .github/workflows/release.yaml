@@ -3,23 +3,38 @@ name: Release
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to verify
+        required: true
+        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  release-zip:
+  verify-release:
     runs-on: ubuntu-latest
+    env:
+      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/checkout@v5
-
-      - name: ZIP Component Dir
-        run: |
-          cd ${{ github.workspace }}/custom_components/xiaomi_home
-          zip -r xiaomi_home.zip ./
-
-      - name: Upload zip to release
-        uses: svenstaro/upload-release-action@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: ${{ github.workspace }}/custom_components/xiaomi_home/xiaomi_home.zip
-          asset_name: xiaomi_home.zip
-          tag: ${{ github.ref }}
-          overwrite: true
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      - name: Build twice from the checked out tag
+        run: |
+          mkdir -p build downloaded
+          python script/build_release.py --ref HEAD --tag "$RELEASE_TAG" --output build/xiaomi_home.zip
+          python script/build_release.py --ref HEAD --tag "$RELEASE_TAG" --output build/repeated.zip
+          cmp build/xiaomi_home.zip build/repeated.zip
+
+      - name: Verify the existing release asset without uploading or replacing
+        run: |
+          gh release download "$RELEASE_TAG" --pattern xiaomi_home.zip --dir downloaded
+          cmp build/xiaomi_home.zip downloaded/xiaomi_home.zip
+          sha256sum downloaded/xiaomi_home.zip
