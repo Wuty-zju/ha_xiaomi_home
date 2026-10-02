@@ -42,7 +42,8 @@ The work can be dispatched for an existing release tag.
 ## Checks
 
 The existing rules/core pytest, pylint, Hassfest, HACS and setup checks also
-run on the named CO₂, refresh, packaging and integration branches. Core test
+run on the named CO₂, refresh, entry-unload, packaging and integration
+branches. Core test
 dependencies use python-slugify (the API imported by the source), aiohttp and
 PyYAML explicitly. A separate disposable Home Assistant 2026.9.4 image runs
 offline tests with real HA classes and no network or production configuration.
