@@ -358,9 +358,10 @@ async def async_unload_entry(
     # Unload the platform
     unload_ok = await hass.config_entries.async_unload_platforms(
         config_entry, SUPPORTED_PLATFORMS)
-    if unload_ok:
-        hass.data[DOMAIN]['entities'].pop(entry_id, None)
-        hass.data[DOMAIN]['devices'].pop(entry_id, None)
+    if not unload_ok:
+        return False
+    hass.data[DOMAIN]['entities'].pop(entry_id, None)
+    hass.data[DOMAIN]['devices'].pop(entry_id, None)
     # Remove integration data
     miot_client: MIoTClient = hass.data[DOMAIN]['miot_clients'].pop(
         entry_id, None)
