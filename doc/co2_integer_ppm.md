@@ -31,11 +31,16 @@ path. The integration does not rewrite previous Recorder history.
 
 The public specification fixtures have source links and hashes in
 `test/fixtures/README.md`; tests use synthetic values such as 1217 and 1193.
-The source observation establishes cloud notification resolution; local hub
-GET and notify must be validated separately before claiming full local support.
-A specification permission, discovered gateway or successful TLS handshake
-alone cannot prove either operation. Both reference models use BLE and cannot
-be adapted using a direct UDP LAN allowlist.
+Read-only observations on 2026-10-03 established fine integers from OAuth
+cloud notifications and native hub GET/notify for both this instance and
+xiaomi.sensor_ht.new3pr. The selected gateway reported online,
+specv2_access and push_available for both devices. An isolated client with
+its own matching certificate used the existing MipsLocalClient and actual
+MIoTClient/MIoTDevice/Sensor path. It did not replace the production client.
+Native GET responses contained value/ts; no sampling-time interpretation of
+ts was established. A permission, gateway discovery or successful TLS
+handshake alone cannot prove property access. Both reference models use BLE
+and cannot be adapted using a direct UDP LAN allowlist.
 
 The sensor starts without a restored value. Failed initial reads leave it
 unknown until a valid read/notification arrives. Preserving integers does not
@@ -58,4 +63,17 @@ integration setup/unload/remove
 functions across two setup cycles, using the real parser, storage, sensor
 setup and registries. OAuth/client communication and platform forwarding are
 mocked; other platform implementations and real certificate rotation are not
-part of this test. Gateway routing has separate acceptance requirements.
+part of this test. The native hub observation lasted 15 minutes: four notifications for
+miaomiaoce.airm.co2 and five for xiaomi.sensor_ht.new3pr, all valid finer
+integers preserved by the candidate entities. Receive intervals varied;
+several were approximately five minutes. This small window does not define
+a guaranteed cadence, device sampling interval or cache freshness.
+
+In AUTO, subscriptions prefer a qualified connected hub; initial batch
+refresh still tries cloud first and falls back for unsuccessful properties.
+An isolated startup probe with existing connections ready reproduced cloud
+failure for miaomiaoce.airm.co2 and a successful hub fallback, alongside a
+successful cloud read for new3pr. This establishes the coordinator path,
+not production restart timing. CLOUD mode cannot use that local fallback.
+No separate local hub feature branch is required. Production installation,
+configuration, reload and Recorder repair were not performed.
