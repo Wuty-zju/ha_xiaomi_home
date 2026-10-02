@@ -63,8 +63,8 @@ integration setup/unload/remove
 functions across two setup cycles, using the real parser, storage, sensor
 setup and registries. OAuth/client communication and platform forwarding are
 mocked; other platform implementations and real certificate rotation are not
-part of this test. The native hub observation lasted 15 minutes: four notifications for
-miaomiaoce.airm.co2 and five for xiaomi.sensor_ht.new3pr, all valid finer
+part of this test. The native hub observation lasted 15 minutes: three notifications for
+miaomiaoce.airm.co2 and four for xiaomi.sensor_ht.new3pr, all valid finer
 integers preserved by the candidate entities. Receive intervals varied;
 several were approximately five minutes. This small window does not define
 a guaranteed cadence, device sampling interval or cache freshness.
