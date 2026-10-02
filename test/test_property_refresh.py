@@ -289,7 +289,9 @@ async def test_invalid_local_values_keep_request(tmp_path, monkeypatch, value):
     client._MIoTClient__on_prop_msg.assert_not_called()
 
 
-async def test_handler_preserves_budget_of_deferred_batch(tmp_path, monkeypatch):
+async def test_handler_preserves_budget_of_deferred_batch(
+    tmp_path, monkeypatch
+):
     client = make_client(tmp_path, monkeypatch)
     for piid in range(151):
         queue(client, piid=piid)
@@ -305,3 +307,28 @@ async def test_handler_preserves_budget_of_deferred_batch(tmp_path, monkeypatch)
     await client._MIoTClient__refresh_props_handler()
     assert not client._refresh_props_list
     assert client._MIoTClient__on_prop_msg.call_count == 151
+
+
+async def test_concurrent_request_keeps_budget_and_only_one_timer(
+    tmp_path, monkeypatch
+):
+    client = make_client(tmp_path, monkeypatch, mode='cloud')
+    first = queue(client)
+    future = asyncio.get_running_loop().create_future()
+
+    async def delayed(**_kwargs):
+        return await future
+
+    client._http.get_props_async.side_effect = delayed
+    client._MIoTClient__start_refresh_props()
+    task = client._refresh_props_task
+    await asyncio.sleep(0)
+    client.request_refresh_prop(did='synthetic-b', siid=3, piid=1029)
+    concurrent_timer = client._refresh_props_timer
+    future.set_result([{**first, 'code': 0, 'value': 1217}])
+    await task
+    assert concurrent_timer.cancelled()
+    assert client._refresh_props_timer is not concurrent_timer
+    assert not client._refresh_props_retry_count
+    assert len(client._refresh_props_list) == 1
+    cancel_timer(client)

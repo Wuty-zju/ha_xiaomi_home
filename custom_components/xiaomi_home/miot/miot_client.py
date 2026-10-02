@@ -1787,6 +1787,7 @@ class MIoTClient:
     async def __refresh_props_handler(self) -> None:
         if not self._refresh_props_list:
             return
+        pending = set(self._refresh_props_list)
         attempted: set[str] = set()
         deferred: set[str] = set()
         await self.__refresh_props_from_cloud(
@@ -1798,20 +1799,27 @@ class MIoTClient:
 
         # One initial attempt and at most three retries per pending property.
         # Successful unrelated properties cannot reset a failed one's budget.
+        expired_count = 0
         for key in list(self._refresh_props_list):
-            if key in deferred and key not in attempted:
+            if (key in deferred or key not in pending) and key not in attempted:
                 continue
             count = self._refresh_props_retry_count.get(key, 0) + 1
             if count >= 4:
                 self._refresh_props_list.pop(key)
                 self._refresh_props_retry_count.pop(key, None)
+                expired_count += 1
             else:
                 self._refresh_props_retry_count[key] = count
         self._refresh_props_retry_count = {
             key: count for key, count in self._refresh_props_retry_count.items()
             if key in self._refresh_props_list}
-        if not self._refresh_props_list:
+        if expired_count:
+            _LOGGER.info('refresh retry limit reached, %d properties',
+                         expired_count)
+        if self._refresh_props_timer:
+            self._refresh_props_timer.cancel()
             self._refresh_props_timer = None
+        if not self._refresh_props_list:
             return
         retrying = any(key in self._refresh_props_list for key in attempted)
         self._refresh_props_timer = self._main_loop.call_later(
