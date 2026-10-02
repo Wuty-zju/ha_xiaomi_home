@@ -47,3 +47,19 @@ physical device or gateway implements the requested property. Native MIPS
 request tests use the real request coroutine with only transport registration
 mocked, including late cancellation, duplicate scheduling and a reply from
 another thread. No certificate registration or connection is started.
+
+
+## Native gateway response contract
+
+Authorized local reads of both CO₂ models returned a dictionary containing
+`value` and `ts`; it has no required cloud-style code/DID/siid/piid fields.
+The existing reply topic and MIPS request ID bind such replies to the request.
+Explicit errors/nonzero codes or provided conflicting identities are rejected,
+while valid value/ts replies and other property scalar types remain unchanged.
+The timestamp is not repackaged as a sensor sampling time or a restored value.
+
+Native property notifications reject malformed JSON, non-dictionaries and
+identities conflicting with the device/explicit property subscription. Wildcard
+subscriptions retain all matching property identifiers; values are passed to
+the existing model/entity semantic layer. No global integer or ppm rule is
+introduced. Synthetic native response tests cover these transport boundaries.

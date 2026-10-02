@@ -1204,16 +1204,21 @@ class MipsLocalClient(_MipsClient):
             f'{"#" if siid is None or piid is None else f"{siid}.{piid}"}')
 
         def on_prop_msg(topic: str, payload: str, ctx: Any):
-            msg: dict = json.loads(payload)
-            if (
-                msg is None
-                or 'did' not in msg
-                or 'siid' not in msg
-                or 'piid' not in msg
-                or 'value' not in msg
-            ):
-                self.log_info('unknown prop msg, %s', payload)
+            try:
+                msg: dict = json.loads(payload)
+            except json.JSONDecodeError:
+                self.log_info('invalid local property JSON')
                 return
+            if (not isinstance(msg, dict)
+                    or msg.get('did') != did or 'value' not in msg):
+                self.log_info('invalid local property identity or value')
+                return
+            for name, expected in (('siid', siid), ('piid', piid)):
+                value = msg.get(name)
+                if (not isinstance(value, int) or isinstance(value, bool)
+                        or expected is not None and value != expected):
+                    self.log_info('invalid local property identifier')
+                    return
             if handler:
                 self.log_debug('local, on properties_changed, %s', payload)
                 handler(msg, ctx)
@@ -1311,8 +1316,20 @@ class MipsLocalClient(_MipsClient):
                 'piid': piid
             }),
             timeout_ms=timeout_ms)
-        if not isinstance(result_obj, dict) or 'value' not in result_obj:
+        if (not isinstance(result_obj, dict) or 'value' not in result_obj
+                or 'error' in result_obj):
             return None
+        # Native replies can contain only value/ts. The reply topic and mid
+        # associate those with the request; explicit errors or conflicting
+        # identities must never be accepted as a successful property read.
+        code = result_obj.get('code', 0)
+        if not isinstance(code, int) or isinstance(code, bool) or code != 0:
+            return None
+        for name, expected in (('did', did), ('siid', siid), ('piid', piid)):
+            if name in result_obj:
+                actual = result_obj[name]
+                if type(actual) is not type(expected) or actual != expected:
+                    return None
         return result_obj['value']
 
     @final
