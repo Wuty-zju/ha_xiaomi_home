@@ -50,6 +50,7 @@ import base64
 import hashlib
 import json
 import logging
+import math
 import re
 import time
 from typing import Any, Optional
@@ -749,19 +750,42 @@ class MIoTHttpClient:
             raise MIoTHttpError('invalid response result')
         return res_obj['result']
 
+    @staticmethod
+    def is_valid_prop_result(result: Any, params: dict) -> bool:
+        """Check a cloud property response against the requested identity."""
+        if not isinstance(result, dict):
+            return False
+        code = result.get('code')
+        if (not isinstance(code, int) or isinstance(code, bool) or code != 0
+                or result.get('did') != params['did']):
+            return False
+        for key in ('siid', 'piid'):
+            value = result.get(key)
+            if (not isinstance(value, int) or isinstance(value, bool)
+                    or value != params[key]):
+                return False
+        return MIoTHttpClient.is_valid_prop_value(result.get('value'))
+
+    @staticmethod
+    def is_valid_prop_value(value: Any) -> bool:
+        """Accept only finite scalar values supported by MIoT properties."""
+        return (isinstance(value, (bool, int, str))
+                or isinstance(value, float) and math.isfinite(value))
+
     async def __get_prop_async(self, did: str, siid: int, piid: int) -> Any:
-        results = await self.get_props_async(
-            params=[{'did': did, 'siid': siid, 'piid': piid}])
-        if not results:
+        params = {'did': did, 'siid': siid, 'piid': piid}
+        results = await self.get_props_async(params=[params])
+        if not isinstance(results, list):
             return None
-        result = results[0]
-        if 'value' not in result:
-            return None
-        return result['value']
+        for result in results:
+            if self.is_valid_prop_result(result, params):
+                return result['value']
+        return None
 
     async def __get_prop_handler(self) -> bool:
         props_req: set[str] = set()
         props_buffer: list[dict] = []
+        requests: dict[str, dict] = {}
 
         for key, item in self._get_prop_list.items():
             if item.get('tag', False):
@@ -772,6 +796,7 @@ class MIoTHttpClient:
             item['tag'] = True
             props_buffer.append(item['param'])
             props_req.add(key)
+            requests[key] = item
 
         if not props_buffer:
             _LOGGER.error('get prop error, empty request list')
@@ -789,23 +814,30 @@ class MIoTHttpClient:
             _LOGGER.error('get prop batch failed, %s', err)
             results = []
 
-        for result in results:
-            if not all(
-                    key in result for key in ['did', 'siid', 'piid', 'value']):
+        for result in results if isinstance(results, list) else []:
+            if not isinstance(result, dict):
                 continue
-            key = f'{result["did"]}.{result["siid"]}.{result["piid"]}'
-            prop_obj = self._get_prop_list.pop(key, None)
-            if prop_obj is None:
-                _LOGGER.info('get prop error, key not exists, %s', result)
+            key = (f'{result.get("did")}.{result.get("siid")}.'
+                   f'{result.get("piid")}')
+            if key not in props_req:
                 continue
-            prop_obj['fut'].set_result(result['value'])
+            prop_obj = requests[key]
+            if (self._get_prop_list.get(key) is not prop_obj
+                    or not self.is_valid_prop_result(
+                        result, prop_obj['param'])):
+                continue
+            self._get_prop_list.pop(key)
+            if not prop_obj['fut'].done():
+                prop_obj['fut'].set_result(result['value'])
             props_req.remove(key)
 
         for key in props_req:
-            prop_obj = self._get_prop_list.pop(key, None)
-            if prop_obj is None:
+            prop_obj = requests[key]
+            if self._get_prop_list.get(key) is not prop_obj:
                 continue
-            prop_obj['fut'].set_result(None)
+            self._get_prop_list.pop(key)
+            if not prop_obj['fut'].done():
+                prop_obj['fut'].set_result(None)
         if props_req:
             _LOGGER.info(
                 'get prop from cloud failed, %s', props_req)
@@ -827,7 +859,7 @@ class MIoTHttpClient:
         key: str = f'{did}.{siid}.{piid}'
         prop_obj = self._get_prop_list.get(key, None)
         if prop_obj:
-            return await prop_obj['fut']
+            return await asyncio.shield(prop_obj['fut'])
         fut = self._main_loop.create_future()
         self._get_prop_list[key] = {
             'param': {'did': did, 'siid': siid, 'piid': piid},
@@ -839,7 +871,7 @@ class MIoTHttpClient:
                 lambda: self._main_loop.create_task(
                     self.__get_prop_handler()))
 
-        return await fut
+        return await asyncio.shield(fut)
 
     async def set_prop_async(self, params: list) -> list:
         """
