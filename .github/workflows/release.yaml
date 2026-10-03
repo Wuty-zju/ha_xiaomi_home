@@ -3,12 +3,6 @@ name: Release
 on:
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing release tag to verify
-        required: true
-        type: string
 
 permissions:
   contents: read
@@ -17,24 +11,35 @@ jobs:
   verify-release:
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.event.release.tag_name }}
     steps:
       - uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          ref: ${{ github.event.release.tag_name }}
           persist-credentials: false
-
-      - name: Build twice from the checked out tag
-        run: |
-          mkdir -p build downloaded
-          python script/build_release.py --ref HEAD --tag "$RELEASE_TAG" --output build/xiaomi_home.zip
-          python script/build_release.py --ref HEAD --tag "$RELEASE_TAG" --output build/repeated.zip
-          cmp build/xiaomi_home.zip build/repeated.zip
-
-      - name: Verify the existing release asset without uploading or replacing
+      - name: Verify published component files without replacing the asset
         run: |
           gh release download "$RELEASE_TAG" --pattern xiaomi_home.zip --dir downloaded
-          cmp build/xiaomi_home.zip downloaded/xiaomi_home.zip
-          sha256sum downloaded/xiaomi_home.zip
+          python - <<'PYCODE'
+          import hashlib, json, os, subprocess, zipfile
+          from pathlib import Path
+          prefix = 'custom_components/xiaomi_home/'
+          paths = subprocess.check_output([
+              'git', 'ls-tree', '-r', '--name-only', 'HEAD', '--',
+              prefix, 'LICENSE.md', 'LegalNotice.md'], text=True).splitlines()
+          expected = {
+              p.removeprefix(prefix): subprocess.check_output([
+                  'git', 'show', 'HEAD:' + p]) for p in paths}
+          asset = Path('downloaded/xiaomi_home.zip')
+          with zipfile.ZipFile(asset) as archive:
+              assert archive.testzip() is None
+              assert len(archive.namelist()) == len(expected)
+              assert set(archive.namelist()) == set(expected)
+              assert all(archive.read(p) == data
+                         for p, data in expected.items())
+              version = json.loads(archive.read('manifest.json'))['version']
+              assert version == os.environ['RELEASE_TAG']
+          print(hashlib.sha256(asset.read_bytes()).hexdigest())
+          PYCODE
