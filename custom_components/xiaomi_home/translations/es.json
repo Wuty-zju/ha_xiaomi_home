@@ -49,7 +49,8 @@
                     "action_debug": "Modo de Depuración de Acciones",
                     "hide_non_standard_entities": "Ocultar Entidades Generadas No Estándar",
                     "display_binary_mode": "Modo de visualización del sensor binario",
-                    "display_devices_changed_notify": "Mostrar notificaciones de cambio de estado del dispositivo"
+                    "display_devices_changed_notify": "Mostrar notificaciones de cambio de estado del dispositivo",
+                    "enable_manual_scenes": "Activar escenas manuales de Xiaomi Home"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "Actualizar reglas de conversión de entidad",
                     "update_lan_ctrl_config": "Actualizar configuración de control LAN",
                     "network_detect_config": "Configuración de Red Integrada",
-                    "cover_dead_zone_width": "Anchura del punto ciego de la cortina"
+                    "cover_dead_zone_width": "Anchura del punto ciego de la cortina",
+                    "enable_manual_scenes": "Activar escenas manuales de Xiaomi Home"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "Agregue la integración de nuevo, mensaje de error: {error}",
             "storage_error": "Error en el módulo de almacenamiento de integración. Intente de nuevo o agregue la integración de nuevo: {error}",
             "inconsistent_account": "La información de la cuenta no coincide. Inicie sesión con la cuenta correcta."
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "Escenas manuales de Xiaomi Home"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "No hay una vía de ejecución disponible para esta escena."
+        },
+        "scene_busy": {
+            "message": "Esta escena ya se está ejecutando."
+        },
+        "scene_failed": {
+            "message": "Se rechazó la solicitud de ejecución de la escena."
+        },
+        "scene_result_unknown": {
+            "message": "Se desconoce el resultado de la ejecución de la escena. No se reintentará automáticamente."
         }
     }
 }

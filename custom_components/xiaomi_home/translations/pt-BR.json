@@ -49,7 +49,8 @@
                     "action_debug": "Modo de Depuração de Ações",
                     "hide_non_standard_entities": "Ocultar Entidades Geradas Não Padrão",
                     "display_binary_mode": "Modo de exibição do sensor binário",
-                    "display_devices_changed_notify": "Exibir notificações de mudança de status do dispositivo"
+                    "display_devices_changed_notify": "Exibir notificações de mudança de status do dispositivo",
+                    "enable_manual_scenes": "Ativar cenas manuais do Xiaomi Home"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "Atualizar regras de conversão de entidades",
                     "update_lan_ctrl_config": "Atualizar configuração de controle LAN",
                     "network_detect_config": "Configuração de Rede Integrada",
-                    "cover_dead_zone_width": "Largura da área cega da cortina"
+                    "cover_dead_zone_width": "Largura da área cega da cortina",
+                    "enable_manual_scenes": "Ativar cenas manuais do Xiaomi Home"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "Por favor, adicione novamente a integração. Mensagem de erro: {error}",
             "storage_error": "Exceção no módulo de armazenamento da integração. Tente novamente ou readicione a integração: {error}",
             "inconsistent_account": "As informações da conta são inconsistentes. Por favor, faça login com a conta correta."
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "Cenas manuais do Xiaomi Home"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "Não há um canal de execução disponível para esta cena."
+        },
+        "scene_busy": {
+            "message": "Esta cena já está em execução."
+        },
+        "scene_failed": {
+            "message": "A solicitação de execução da cena foi rejeitada."
+        },
+        "scene_result_unknown": {
+            "message": "O resultado da execução da cena é desconhecido. Não haverá uma nova tentativa automática."
         }
     }
 }
