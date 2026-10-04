@@ -1442,11 +1442,10 @@ class MipsLocalClient(_MipsClient):
             topic='proxy/execMijiaActionGroup',
             payload=json.dumps({'id': ag_id}),
             timeout_ms=timeout_ms)
-        if isinstance(result_obj, dict):
-            if 'result' in result_obj:
-                return result_obj['result']
-            if 'error' in result_obj:
-                return result_obj['error']
+        if isinstance(result_obj, dict) and 'error' not in result_obj:
+            result = result_obj.get('result')
+            if isinstance(result, dict):
+                return result
         return {
             'code': MIoTErrorCode.CODE_MIPS_INVALID_RESULT.value,
             'message': 'invalid result'}
