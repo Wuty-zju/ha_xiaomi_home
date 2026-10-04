@@ -50,7 +50,7 @@
                     "hide_non_standard_entities": "非標準生成エンティティを隠す",
                     "display_binary_mode": "バイナリセンサー表示モード",
                     "display_devices_changed_notify": "デバイスの状態変化通知を表示",
-                    "enable_manual_scenes": "Xiaomi Home の手動シーンを有効にする"
+                    "enable_manual_scenes": "Mijiaシーンの手動制御を有効にする"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "LAN制御構成を更新する",
                     "network_detect_config": "統合ネットワーク構成",
                     "cover_dead_zone_width": "カーテンの死角幅",
-                    "enable_manual_scenes": "Xiaomi Home の手動シーンを有効にする"
+                    "enable_manual_scenes": "Mijiaシーンの手動制御を有効にする"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Xiaomi Home の手動シーン"
+            "name": "Mijiaシーンの手動制御"
         }
     },
     "exceptions": {

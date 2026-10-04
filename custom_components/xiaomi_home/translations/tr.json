@@ -50,7 +50,7 @@
                     "hide_non_standard_entities": "Standart Olmayan Oluşturulan Varlıkları Gizle",
                     "display_binary_mode": "İkili Sensör Görüntüleme Modu",
                     "display_devices_changed_notify": "Cihaz Durum Değişikliği Bildirimlerini Göster",
-                    "enable_manual_scenes": "Xiaomi Home manuel sahnelerini etkinleştir"
+                    "enable_manual_scenes": "Mijia sahnelerinin manuel kontrolünü etkinleştir"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "LAN kontrol yapılandırmasını güncelle",
                     "network_detect_config": "Entegre ağ yapılandırması",
                     "cover_dead_zone_width": "Perde ölü bölge genişliği",
-                    "enable_manual_scenes": "Xiaomi Home manuel sahnelerini etkinleştir"
+                    "enable_manual_scenes": "Mijia sahnelerinin manuel kontrolünü etkinleştir"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Xiaomi Home manuel sahneleri"
+            "name": "Mijia sahnelerinin manuel kontrolü"
         }
     },
     "exceptions": {

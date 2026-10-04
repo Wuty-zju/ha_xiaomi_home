@@ -50,7 +50,7 @@
                     "hide_non_standard_entities": "Masquer les Entités Non Standard",
                     "display_binary_mode": "Mode d'affichage du capteur binaire",
                     "display_devices_changed_notify": "Afficher les notifications de changement d'état de l'appareil",
-                    "enable_manual_scenes": "Activer les scènes manuelles Xiaomi Home"
+                    "enable_manual_scenes": "Activer la commande manuelle des scènes Mijia"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "Mettre à jour la configuration de contrôle LAN",
                     "network_detect_config": "Configuration Réseau Intégrée",
                     "cover_dead_zone_width": "Largeur de la zone aveugle du rideau",
-                    "enable_manual_scenes": "Activer les scènes manuelles Xiaomi Home"
+                    "enable_manual_scenes": "Activer la commande manuelle des scènes Mijia"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Scènes manuelles Xiaomi Home"
+            "name": "Commande manuelle des scènes Mijia"
         }
     },
     "exceptions": {

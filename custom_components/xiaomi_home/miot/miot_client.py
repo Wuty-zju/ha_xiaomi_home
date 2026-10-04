@@ -501,7 +501,13 @@ class MIoTClient:
     @property
     def manual_scene_device_id(self) -> str:
         """Stable identifier for this account's scene device."""
-        return f'manual_scenes.{self.__scene_identity()}'
+        return f'mijia.scenes.manual_controls.{self.__scene_identity()}'
+
+    @property
+    def manual_scene_device_ids(self) -> set[str]:
+        """Current and legacy identifiers owned by this account and region."""
+        return {self.manual_scene_device_id,
+                f'manual_scenes.{self.__scene_identity()}'}
 
     @property
     def manual_scenes(self) -> dict[str, MIoTManualScene]:
