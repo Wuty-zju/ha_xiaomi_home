@@ -50,7 +50,7 @@
                     "hide_non_standard_entities": "Скрыть нестандартные сущности",
                     "display_binary_mode": "Режим отображения бинарного датчика",
                     "display_devices_changed_notify": "Отображать уведомления о изменении состояния устройства",
-                    "enable_manual_scenes": "Включить ручные сценарии Xiaomi Home"
+                    "enable_manual_scenes": "Включить ручное управление сценами Mijia"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "Обновить конфигурацию управления LAN",
                     "network_detect_config": "Интегрированная Сетевая Конфигурация",
                     "cover_dead_zone_width": "Ширина «мертвой зоны» шторы",
-                    "enable_manual_scenes": "Включить ручные сценарии Xiaomi Home"
+                    "enable_manual_scenes": "Включить ручное управление сценами Mijia"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Ручные сценарии Xiaomi Home"
+            "name": "Ручное управление сценами Mijia"
         }
     },
     "exceptions": {

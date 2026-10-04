@@ -53,7 +53,7 @@ import json
 import logging
 import time
 import traceback
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from enum import Enum, auto
 
 from aiohttp import ClientError
@@ -87,6 +87,8 @@ REFRESH_PROPS_RETRY_DELAY = 3
 REFRESH_CLOUD_DEVICES_DELAY = 6
 REFRESH_CLOUD_DEVICES_RETRY_DELAY = 60
 REFRESH_GATEWAY_DEVICES_DELAY = 3
+REFRESH_SCENES_INTERVAL = 600
+REFRESH_SCENE_RETRY_DELAYS = (3, 15, 60, 300)
 
 @dataclass
 class MIoTClientSub:
@@ -114,6 +116,7 @@ class _MIoTSceneRoute:
     """One connection's scene eligibility; None means not yet confirmed."""
     client: MipsLocalClient
     scene_ids: Optional[frozenset[str]] = None
+    refresh: asyncio.Event = dataclass_field(default_factory=asyncio.Event)
 
 
 class CtrlMode(Enum):
@@ -246,6 +249,8 @@ class MIoTClient:
         self._manual_scenes: dict[str, MIoTManualScene] = {}
         self._scene_routes: dict[str, _MIoTSceneRoute] = {}
         self._scene_route_tasks: dict[str, asyncio.Task] = {}
+        self._scene_metadata_task: Optional[asyncio.Task] = None
+        self._scene_metadata_timer: Optional[asyncio.TimerHandle] = None
         self._scene_exec_tasks: set[asyncio.Task] = set()
         self._scene_in_flight: set[str] = set()
         self._scene_state_subs: dict[str, Callable[[], None]] = {}
@@ -410,8 +415,13 @@ class MIoTClient:
 
     async def deinit_async(self) -> None:
         self._manual_scenes_enabled = False
+        if self._scene_metadata_timer:
+            self._scene_metadata_timer.cancel()
+            self._scene_metadata_timer = None
         tasks = list(self._scene_route_tasks.values()) + list(
             self._scene_exec_tasks)
+        if self._scene_metadata_task:
+            tasks.append(self._scene_metadata_task)
         for task in tasks:
             task.cancel()
         if tasks:
@@ -500,7 +510,13 @@ class MIoTClient:
     @property
     def manual_scene_device_id(self) -> str:
         """Stable identifier for this account's scene device."""
-        return f'manual_scenes.{self.__scene_identity()}'
+        return f'mijia.scenes.manual_controls.{self.__scene_identity()}'
+
+    @property
+    def manual_scene_device_ids(self) -> set[str]:
+        """Current and legacy identifiers owned by this account and region."""
+        return {self.manual_scene_device_id,
+                f'manual_scenes.{self.__scene_identity()}'}
 
     @property
     def manual_scenes(self) -> dict[str, MIoTManualScene]:
@@ -541,6 +557,37 @@ class MIoTClient:
         return scenes
 
     async def load_manual_scenes_async(self) -> None:
+        """Coalesce metadata refreshes without coupling caller cancellation."""
+        if not self._manual_scenes_enabled:
+            return
+        if self._scene_metadata_task is None:
+            self._scene_metadata_task = self._main_loop.create_task(
+                self.__load_manual_scenes_async())
+        await asyncio.shield(self._scene_metadata_task)
+
+    def __request_scene_metadata_refresh(self) -> None:
+        if self._scene_metadata_timer:
+            self._scene_metadata_timer.cancel()
+            self._scene_metadata_timer = None
+        if self._manual_scenes_enabled and self._scene_metadata_task is None:
+            self._scene_metadata_task = self._main_loop.create_task(
+                self.__load_manual_scenes_async())
+
+    async def __load_manual_scenes_async(self) -> None:
+        try:
+            await self.__update_manual_scenes_async()
+        except (MIoTError, ClientError, OSError, ValueError):
+            _LOGGER.error('manual scene metadata refresh failed')
+        finally:
+            self._scene_metadata_task = None
+            if self._manual_scenes_enabled:
+                if self._scene_metadata_timer:
+                    self._scene_metadata_timer.cancel()
+                self._scene_metadata_timer = self._main_loop.call_later(
+                    REFRESH_SCENES_INTERVAL,
+                    self.__request_scene_metadata_refresh)
+
+    async def __update_manual_scenes_async(self) -> None:
         """Refresh complete homes; retain metadata when a home fails."""
         if not self._manual_scenes_enabled:
             return
@@ -554,7 +601,7 @@ class MIoTClient:
         if not isinstance(homes, dict):
             homes = {}
         saved = {}
-        self._manual_scenes.clear()
+        updated = {}
         for home_id, home in self._entry_data['home_selected'].items():
             try:
                 home_id = self.__scene_id(home_id)
@@ -563,8 +610,9 @@ class MIoTClient:
                 continue
             records = homes.get(home_id, [])
             try:
-                records = await asyncio.wait_for(
-                    self._http.get_manual_scenes_async(owner, home_id), 20)
+                if self._network.network_status:
+                    records = await asyncio.wait_for(
+                        self._http.get_manual_scenes_async(owner, home_id), 20)
                 scenes = self.__parse_manual_scenes(home_id, owner, records)
             except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
                 _LOGGER.info('manual scene list unavailable for a home')
@@ -576,12 +624,14 @@ class MIoTClient:
                         home_id, owner, records)
                 except MIoTClientError:
                     continue
-            self._manual_scenes.update(scenes)
+            updated.update(scenes)
             saved[home_id] = [
                 {'scene_id': scene.scene_id, 'scene_name': scene.scene_name,
                  'home_id': home_id, 'owner_uid': owner,
                  'room_id': scene.room_id} for scene in scenes.values()]
             self.__request_scene_route_refresh(home.get('group_id'))
+        self._manual_scenes = updated
+        self.__notify_manual_scene_state()
         if not await self._storage.save_async(
                 domain='miot_scenes', name=f'{self._uid}_{self._cloud_server}',
                 data={'version': 1, 'homes': saved}):
@@ -616,12 +666,20 @@ class MIoTClient:
             return client
         return None
 
-    def manual_scene_available(self, key: str) -> bool:
+    def manual_scene_route(self, key: str) -> Optional[str]:
+        """Return the next execution channel using only current memory."""
         scene = self._manual_scenes.get(key)
         if not self._manual_scenes_enabled or scene is None:
-            return False
-        return bool(self._network.network_status
-                    or self.__manual_scene_local_client(scene))
+            return None
+        home = self._entry_data['home_selected'].get(scene.home_id, {})
+        if home.get('uid') != scene.owner_uid:
+            return None
+        if self.__manual_scene_local_client(scene):
+            return 'local'
+        return 'cloud' if self._network.network_status else None
+
+    def manual_scene_available(self, key: str) -> bool:
+        return self.manual_scene_route(key) is not None
 
     async def __invalidate_scene_route_async(self, group: str) -> None:
         self._scene_routes.pop(group, None)
@@ -634,40 +692,55 @@ class MIoTClient:
     async def __refresh_scene_route_async(
         self, group: str, route: _MIoTSceneRoute
     ) -> None:
-        # One bounded retry covers initialization before reply subscriptions
-        # are ready. A confirmed empty list is valid and is never retried.
-        for attempt in range(2):
+        attempt = 0
+        while (self._manual_scenes_enabled and self._ctrl_mode == CtrlMode.AUTO
+               and self._scene_routes.get(group) is route
+               and self._mips_local.get(group) is route.client
+               and route.client.mips_state
+               and any(home.get('group_id') == group for home in
+                       self._entry_data['home_selected'].values())):
+            try:
+                ids = await asyncio.wait_for(
+                    route.client.get_action_group_list_async(), 12)
+                if (not isinstance(ids, list) or any(
+                        not isinstance(item, str) or not item.strip()
+                        for item in ids)):
+                    raise MIoTClientError('scene_unavailable')
+            except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
+                ids = None
             if (self._scene_routes.get(group) is not route
                     or self._mips_local.get(group) is not route.client
                     or not route.client.mips_state):
                 return
+            route.scene_ids = (frozenset(ids) if ids is not None
+                               and not route.refresh.is_set() else None)
+            self.__notify_manual_scene_state()
+            if ids is None:
+                delay = REFRESH_SCENE_RETRY_DELAYS[min(
+                    attempt, len(REFRESH_SCENE_RETRY_DELAYS)-1)]
+                attempt += 1
+            else:
+                attempt = 0
+                delay = REFRESH_SCENES_INTERVAL
             try:
-                ids = await asyncio.wait_for(
-                    route.client.get_action_group_list_async(), 12)
-            except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
-                if attempt == 0:
-                    await asyncio.sleep(REFRESH_GATEWAY_DEVICES_DELAY)
-                    continue
-                return
-            if (self._manual_scenes_enabled
-                    and self._scene_routes.get(group) is route
-                    and self._mips_local.get(group) is route.client
-                    and route.client.mips_state
-                    and self._scene_route_tasks.get(group)
-                    is asyncio.current_task()):
-                route.scene_ids = frozenset(ids)
-                self.__notify_manual_scene_state()
-            return
+                await asyncio.wait_for(route.refresh.wait(), delay)
+                route.refresh.clear()
+                await asyncio.sleep(REFRESH_SCENE_RETRY_DELAYS[0])
+            except TimeoutError:
+                pass
+            # Eligibility expires before querying; failures cannot keep an
+            # indefinitely stale positive or negative list alive.
+            route.scene_ids = None
+            self.__notify_manual_scene_state()
 
     def __request_scene_route_refresh(self, group: Optional[str]) -> None:
         if (not self._manual_scenes_enabled or self._ctrl_mode != CtrlMode.AUTO
-                or group is None or group in self._scene_route_tasks):
+                or group is None or group in self._scene_route_tasks
+                or not any(home.get('group_id') == group for home in
+                           self._entry_data['home_selected'].values())):
             return
         client = self._mips_local.get(group)
         if client is None or not client.mips_state:
-            return
-        route = self._scene_routes.get(group)
-        if route and route.client is client:
             return
         route = _MIoTSceneRoute(client=client)
         self._scene_routes[group] = route
@@ -681,10 +754,23 @@ class MIoTClient:
 
         task.add_done_callback(done)
 
+    def __scene_rpc_failed(
+        self, scene: MIoTManualScene, failed_route: Optional[_MIoTSceneRoute]
+    ) -> None:
+        group = calc_group_id(scene.owner_uid, scene.home_id)
+        route = self._scene_routes.get(group)
+        if route is not None and route is failed_route:
+            route.scene_ids = None
+            self.__notify_manual_scene_state()
+            # Wake the single read task after its cooldown, never replay exec.
+            route.refresh.set()
+            self.__request_scene_route_refresh(group)
+
     async def run_manual_scene_async(self, key: str) -> None:
         """Execute on exactly one channel; never replay an ambiguous request."""
         scene = self._manual_scenes.get(key)
-        if not self._manual_scenes_enabled or scene is None:
+        channel = self.manual_scene_route(key)
+        if channel is None:
             raise MIoTClientError('scene_unavailable')
         if key in self._scene_in_flight:
             raise MIoTClientError('scene_busy')
@@ -692,16 +778,25 @@ class MIoTClient:
         task = asyncio.current_task()
         self._scene_exec_tasks.add(task)
         try:
-            local = self.__manual_scene_local_client(scene)
+            local = (self.__manual_scene_local_client(scene)
+                     if channel == 'local' else None)
+            route = self._scene_routes.get(
+                calc_group_id(scene.owner_uid, scene.home_id))
             try:
                 if local:
                     # Once exec starts, MQTT may queue it even if disconnected.
                     result = await asyncio.wait_for(
                         local.exec_action_group_list_async(scene.scene_id), 12)
-                    if (not isinstance(result, dict)
-                            or not isinstance(result.get('code'), int)
-                            or isinstance(result['code'], bool)
-                            or result['code'] not in (0, 1)):
+                    code = (result.get('code')
+                            if isinstance(result, dict) else None)
+                    if (not isinstance(code, int) or isinstance(code, bool)
+                            or code not in (0, 1)):
+                        if (not isinstance(code, int) or isinstance(code, bool)
+                                or code in (
+                                    MIoTErrorCode.CODE_TIMEOUT.value,
+                                    MIoTErrorCode.CODE_MIPS_INVALID_RESULT.value
+                                )):
+                            self.__scene_rpc_failed(scene, route)
                         raise MIoTClientError('scene_result_unknown')
                 else:
                     if not self._network.network_status:
@@ -714,6 +809,8 @@ class MIoTClient:
             except MIoTClientError:
                 raise
             except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
+                if local:
+                    self.__scene_rpc_failed(scene, route)
                 raise MIoTClientError('scene_result_unknown') from None
         finally:
             self._scene_in_flight.discard(key)
@@ -1307,6 +1404,8 @@ class MIoTClient:
     @final
     async def __on_network_status_changed(self, status: bool) -> None:
         self.__notify_manual_scene_state()
+        if status:
+            self.__request_scene_metadata_refresh()
         _LOGGER.info('network status changed, %s', status)
         if status:
             # Check auth_info

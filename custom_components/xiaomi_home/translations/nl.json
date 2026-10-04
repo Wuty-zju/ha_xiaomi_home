@@ -50,7 +50,7 @@
                     "hide_non_standard_entities": "Niet-standaard entiteiten verbergen",
                     "display_binary_mode": "Binaire sensorweergavemodus",
                     "display_devices_changed_notify": "Apparaatstatuswijzigingen weergeven",
-                    "enable_manual_scenes": "Handmatige Xiaomi Home-scènes inschakelen"
+                    "enable_manual_scenes": "Handmatige bediening van Mijia-scènes inschakelen"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "Werk LAN controleconfiguratie bij",
                     "network_detect_config": "Geïntegreerde Netwerkconfiguratie",
                     "cover_dead_zone_width": "Breedte van de dode hoek van het gordijn",
-                    "enable_manual_scenes": "Handmatige Xiaomi Home-scènes inschakelen"
+                    "enable_manual_scenes": "Handmatige bediening van Mijia-scènes inschakelen"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Handmatige Xiaomi Home-scènes"
+            "name": "Handmatige bediening van Mijia-scènes"
         }
     },
     "exceptions": {
