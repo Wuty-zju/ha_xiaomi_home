@@ -278,8 +278,6 @@ class MIoTHttpClient:
         ):
             raise MIoTHttpError('invalid params')
 
-        self._scene_host = ('mico.api.mijia.tech' if cloud_server == 'cn'
-                            else f'{cloud_server}.mico.api.mijia.tech')
         self._user_agent = (
             f'ha_xiaomi_home/{INTEGRATION_VERSION}'
             f' {system_info}'
@@ -308,6 +306,8 @@ class MIoTHttpClient:
         access_token: Optional[str] = None
     ) -> None:
         if isinstance(cloud_server, str):
+            self._scene_host = ('mico.api.mijia.tech' if cloud_server == 'cn'
+                                else f'{cloud_server}.mico.api.mijia.tech')
             if cloud_server != 'cn':
                 self._host = f'{cloud_server}.{DEFAULT_OAUTH2_API_HOST}'
             self._base_url = f'https://{self._host}'

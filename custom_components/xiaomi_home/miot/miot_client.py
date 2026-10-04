@@ -109,6 +109,13 @@ class MIoTManualScene:
     room_id: Optional[str] = None
 
 
+@dataclass
+class _MIoTSceneRoute:
+    """One connection's scene eligibility; None means not yet confirmed."""
+    client: MipsLocalClient
+    scene_ids: Optional[frozenset[str]] = None
+
+
 class CtrlMode(Enum):
     """MIoT client control mode."""
     AUTO = 0
@@ -237,7 +244,7 @@ class MIoTClient:
         self._manual_scenes_enabled = entry_data.get(
             'enable_manual_scenes', False)
         self._manual_scenes: dict[str, MIoTManualScene] = {}
-        self._scene_local_ids: dict[str, set[str]] = {}
+        self._scene_routes: dict[str, _MIoTSceneRoute] = {}
         self._scene_route_tasks: dict[str, asyncio.Task] = {}
         self._scene_exec_tasks: set[asyncio.Task] = set()
         self._scene_in_flight: set[str] = set()
@@ -411,7 +418,7 @@ class MIoTClient:
             await asyncio.gather(*tasks, return_exceptions=True)
         self._scene_route_tasks.clear()
         self._scene_state_subs.clear()
-        self._scene_local_ids.clear()
+        self._scene_routes.clear()
         self._network.unsub_network_status(
             key=f'{self._uid}-{self._cloud_server}')
         # Cancel refresh props
@@ -602,44 +609,77 @@ class MIoTClient:
         if home.get('group_id') != group or home.get('uid') != scene.owner_uid:
             return None
         client = self._mips_local.get(group)
-        return client if client and client.mips_state else None
+        route = self._scene_routes.get(group)
+        if (client and client.mips_state and route
+                and route.client is client and route.scene_ids is not None
+                and scene.scene_id in route.scene_ids):
+            return client
+        return None
 
     def manual_scene_available(self, key: str) -> bool:
         scene = self._manual_scenes.get(key)
         if not self._manual_scenes_enabled or scene is None:
             return False
-        local = self.__manual_scene_local_client(scene)
-        return bool(self._network.network_status or (
-            local and scene.scene_id in self._scene_local_ids.get(
-                local.group_id, set())))
+        return bool(self._network.network_status
+                    or self.__manual_scene_local_client(scene))
 
-    async def __refresh_scene_route_async(self, group: str) -> None:
-        client = self._mips_local.get(group)
-        if client is None or not client.mips_state:
+    async def __invalidate_scene_route_async(self, group: str) -> None:
+        self._scene_routes.pop(group, None)
+        self.__notify_manual_scene_state()
+        task = self._scene_route_tasks.get(group)
+        if task:
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+
+    async def __refresh_scene_route_async(
+        self, group: str, route: _MIoTSceneRoute
+    ) -> None:
+        # One bounded retry covers initialization before reply subscriptions
+        # are ready. A confirmed empty list is valid and is never retried.
+        for attempt in range(2):
+            if (self._scene_routes.get(group) is not route
+                    or self._mips_local.get(group) is not route.client
+                    or not route.client.mips_state):
+                return
+            try:
+                ids = await asyncio.wait_for(
+                    route.client.get_action_group_list_async(), 12)
+            except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
+                if attempt == 0:
+                    await asyncio.sleep(REFRESH_GATEWAY_DEVICES_DELAY)
+                    continue
+                return
+            if (self._manual_scenes_enabled
+                    and self._scene_routes.get(group) is route
+                    and self._mips_local.get(group) is route.client
+                    and route.client.mips_state
+                    and self._scene_route_tasks.get(group)
+                    is asyncio.current_task()):
+                route.scene_ids = frozenset(ids)
+                self.__notify_manual_scene_state()
             return
-        try:
-            ids = await asyncio.wait_for(
-                client.get_action_group_list_async(), 12)
-            if self._mips_local.get(group) is client and client.mips_state:
-                self._scene_local_ids[group] = set(ids)
-        except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
-            if self._mips_local.get(group) is client:
-                self._scene_local_ids.pop(group, None)
-        finally:
-            self.__notify_manual_scene_state()
 
     def __request_scene_route_refresh(self, group: Optional[str]) -> None:
         if (not self._manual_scenes_enabled or self._ctrl_mode != CtrlMode.AUTO
-                or group in self._scene_route_tasks):
+                or group is None or group in self._scene_route_tasks):
             return
         client = self._mips_local.get(group)
         if client is None or not client.mips_state:
             return
+        route = self._scene_routes.get(group)
+        if route and route.client is client:
+            return
+        route = _MIoTSceneRoute(client=client)
+        self._scene_routes[group] = route
         task = self._main_loop.create_task(
-            self.__refresh_scene_route_async(group))
+            self.__refresh_scene_route_async(group, route))
         self._scene_route_tasks[group] = task
-        task.add_done_callback(
-            lambda _: self._scene_route_tasks.pop(group, None))
+
+        def done(completed: asyncio.Task) -> None:
+            if self._scene_route_tasks.get(group) is completed:
+                self._scene_route_tasks.pop(group, None)
+
+        task.add_done_callback(done)
 
     async def run_manual_scene_async(self, key: str) -> None:
         """Execute on exactly one channel; never replay an ambiguous request."""
@@ -653,23 +693,8 @@ class MIoTClient:
         self._scene_exec_tasks.add(task)
         try:
             local = self.__manual_scene_local_client(scene)
-            ids = []
-            if local:
-                try:
-                    ids = await asyncio.wait_for(
-                        local.get_action_group_list_async(), 12)
-                    if self._mips_local.get(local.group_id) is local:
-                        self._scene_local_ids[local.group_id] = set(ids)
-                except (MIoTError, ClientError, TimeoutError, OSError,
-                        ValueError):
-                    if self._mips_local.get(local.group_id) is local:
-                        self._scene_local_ids.pop(local.group_id, None)
-                self.__notify_manual_scene_state()
-                if (self._mips_local.get(local.group_id) is not local
-                        or not local.mips_state):
-                    local = None
             try:
-                if local and scene.scene_id in ids:
+                if local:
                     # Once exec starts, MQTT may queue it even if disconnected.
                     result = await asyncio.wait_for(
                         local.exec_action_group_list_async(scene.scene_id), 12)
@@ -1319,6 +1344,7 @@ class MIoTClient:
                 and mips.port == data['port']
             ):
                 return
+            await self.__invalidate_scene_route_async(group_id)
             mips.disconnect()
             self._mips_local.pop(group_id, None)
         home_name: str = ''
@@ -1392,6 +1418,7 @@ class MIoTClient:
             # The connection to the central hub gateway is definitely broken.
             self.__show_central_state_changed_notify(False)
             return
+        await self.__invalidate_scene_route_async(group_id)
         if state:
             # Connected
             self.__request_refresh_gw_devices_by_group_id(group_id=group_id)
@@ -1424,11 +1451,6 @@ class MIoTClient:
                 if sub and sub.handler:
                     sub.handler(did, MIoTDeviceState.OFFLINE, sub.handler_ctx)
             self.__request_show_devices_changed_notify()
-        if state:
-            self.__request_scene_route_refresh(group_id)
-        else:
-            self._scene_local_ids.pop(group_id, None)
-        self.__notify_manual_scene_state()
         self.__show_central_state_changed_notify(state)
 
     @final
