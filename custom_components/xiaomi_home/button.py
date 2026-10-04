@@ -123,6 +123,14 @@ class ManualSceneButton(ButtonEntity):
     def available(self) -> bool:
         return self._client.manual_scene_available(self._scene_key)
 
+    @property
+    def icon(self) -> str:
+        return {
+            'local': 'mdi:hub-outline',
+            'cloud': 'mdi:cloud-outline'
+        }.get(self._client.manual_scene_route(self._scene_key),
+              'mdi:cloud-off-outline')
+
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._client.sub_manual_scene_state(
