@@ -225,18 +225,29 @@ async def async_migrate_scene_ids(
                 domain='miot_scene_registry', name=name, data=journal):
             raise HomeAssistantError('Cannot save manual scene migration')
         applied = []
+        committed = False
         try:
             for unique_id, old, new in plan:
                 if old != new:
                     registry.async_update_entity(old, new_entity_id=new)
                     applied.append((old, new))
                 records[unique_id]['done'] = True
-            if plan and not await storage.save_async(
-                    domain='miot_scene_registry', name=name, data=journal):
-                raise HomeAssistantError('Cannot finish scene migration')
+            if plan:
+                completion = client.main_loop.create_task(storage.save_async(
+                    domain='miot_scene_registry', name=name, data=journal))
+                try:
+                    committed = await asyncio.shield(completion)
+                except asyncio.CancelledError:
+                    # Executor-backed saves cannot be cancelled reliably.
+                    # Finish the journal before deciding whether to roll back.
+                    committed = await completion
+                    raise
+                if not committed:
+                    raise HomeAssistantError('Cannot finish scene migration')
         except (Exception, asyncio.CancelledError):
-            for old, new in reversed(applied):
-                registry.async_update_entity(new, new_entity_id=old)
+            if not committed:
+                for old, new in reversed(applied):
+                    registry.async_update_entity(new, new_entity_id=old)
             raise
     devices = device_registry.async_get(hass)
     entries = (devices.async_get_devices(
