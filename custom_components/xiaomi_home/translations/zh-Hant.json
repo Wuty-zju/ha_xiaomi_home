@@ -49,7 +49,8 @@
                     "action_debug": "Action 調試模式",
                     "hide_non_standard_entities": "隱藏非標準生成實體",
                     "display_binary_mode": "二進制傳感器顯示模式",
-                    "display_devices_changed_notify": "顯示設備狀態變化通知"
+                    "display_devices_changed_notify": "顯示設備狀態變化通知",
+                    "enable_manual_scenes": "啟用米家手動場景"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "更新實體轉換規則",
                     "update_lan_ctrl_config": "更新局域網控制配置",
                     "network_detect_config": "集成網絡配置",
-                    "cover_dead_zone_width": "窗簾盲區寬度"
+                    "cover_dead_zone_width": "窗簾盲區寬度",
+                    "enable_manual_scenes": "啟用米家手動場景"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "請重新添加集成，錯誤信息：{error}",
             "storage_error": "集成存儲模塊異常。請重試或者重新添加集成：{error}",
             "inconsistent_account": "帳號信息不一致。請使用正確的帳號登錄。"
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "米家手動場景"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "場景沒有可用的執行通道。"
+        },
+        "scene_busy": {
+            "message": "此場景正在執行。"
+        },
+        "scene_failed": {
+            "message": "場景執行請求被拒絕。"
+        },
+        "scene_result_unknown": {
+            "message": "場景執行結果未知，不會自動重試。"
         }
     }
 }

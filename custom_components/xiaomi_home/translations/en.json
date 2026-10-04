@@ -49,7 +49,8 @@
                     "action_debug": "Action Debug Mode",
                     "hide_non_standard_entities": "Hide Non-Standard Generated Entities",
                     "display_binary_mode": "Binary Sensor Display Mode",
-                    "display_devices_changed_notify": "Display Device Status Change Notifications"
+                    "display_devices_changed_notify": "Display Device Status Change Notifications",
+                    "enable_manual_scenes": "Enable manual Xiaomi Home scenes"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "Update entity conversion rules",
                     "update_lan_ctrl_config": "Update LAN control configuration",
                     "network_detect_config": "Integrated network configuration",
-                    "cover_dead_zone_width": "Cover dead zone width"
+                    "cover_dead_zone_width": "Cover dead zone width",
+                    "enable_manual_scenes": "Enable manual Xiaomi Home scenes"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "Please re-add the integration. Error message: {error}",
             "storage_error": "Integration storage module exception. Please try again or re-add the integration: {error}",
             "inconsistent_account": "Account information is inconsistent. Please login with the correct account."
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "Manual Xiaomi Home scenes"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "The scene has no available execution route."
+        },
+        "scene_busy": {
+            "message": "This scene is already being executed."
+        },
+        "scene_failed": {
+            "message": "The scene execution request was rejected."
+        },
+        "scene_result_unknown": {
+            "message": "The scene execution result is unknown. It will not be retried automatically."
         }
     }
 }

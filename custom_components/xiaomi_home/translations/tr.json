@@ -49,7 +49,8 @@
                     "action_debug": "Eylem Hata Ayıklama Modu",
                     "hide_non_standard_entities": "Standart Olmayan Oluşturulan Varlıkları Gizle",
                     "display_binary_mode": "İkili Sensör Görüntüleme Modu",
-                    "display_devices_changed_notify": "Cihaz Durum Değişikliği Bildirimlerini Göster"
+                    "display_devices_changed_notify": "Cihaz Durum Değişikliği Bildirimlerini Göster",
+                    "enable_manual_scenes": "Xiaomi Home manuel sahnelerini etkinleştir"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "Varlık dönüştürme kurallarını güncelle",
                     "update_lan_ctrl_config": "LAN kontrol yapılandırmasını güncelle",
                     "network_detect_config": "Entegre ağ yapılandırması",
-                    "cover_dead_zone_width": "Perde ölü bölge genişliği"
+                    "cover_dead_zone_width": "Perde ölü bölge genişliği",
+                    "enable_manual_scenes": "Xiaomi Home manuel sahnelerini etkinleştir"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "Lütfen entegrasyonu yeniden ekleyin. Hata mesajı: {error}",
             "storage_error": "Entegrasyon depolama modülü istisnası. Lütfen tekrar deneyin veya entegrasyonu yeniden ekleyin: {error}",
             "inconsistent_account": "Hesap bilgileri tutarsız. Lütfen doğru hesapla giriş yapın."
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "Xiaomi Home manuel sahneleri"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "Bu sahne için kullanılabilir bir yürütme yolu yok."
+        },
+        "scene_busy": {
+            "message": "Bu sahne zaten yürütülüyor."
+        },
+        "scene_failed": {
+            "message": "Sahne yürütme isteği reddedildi."
+        },
+        "scene_result_unknown": {
+            "message": "Sahne yürütme sonucu bilinmiyor. Otomatik olarak yeniden denenmeyecek."
         }
     }
 }

@@ -165,6 +165,7 @@ class _MipsRequest:
     on_reply: Callable[[str, Any], None]
     on_reply_ctx: Any
     timer: Optional[asyncio.TimerHandle]
+    log_payload: bool = True
 
 
 @dataclass
@@ -1419,9 +1420,19 @@ class MipsLocalClient(_MipsClient):
             topic='proxy/getMijiaActionGroupList',
             payload='{}',
             timeout_ms=timeout_ms)
-        if not result_obj or 'result' not in result_obj:
-            raise MIoTMipsError('invalid result')
-        return result_obj['result']
+        if not isinstance(result_obj, dict):
+            raise MIoTMipsError('invalid action group response')
+        result = result_obj.get('result')
+        if (not isinstance(result, list)
+                or 'error' in result_obj
+                or ('code' in result_obj and (
+                    not isinstance(result_obj['code'], int)
+                    or isinstance(result_obj['code'], bool)
+                    or result_obj['code'] != 0))
+                or any(not isinstance(item, str) or not item
+                       for item in result)):
+            raise MIoTMipsError('invalid action group list')
+        return result
 
     @final
     async def exec_action_group_list_async(
@@ -1429,9 +1440,9 @@ class MipsLocalClient(_MipsClient):
     ) -> dict:
         result_obj = await self.__request_async(
             topic='proxy/execMijiaActionGroup',
-            payload=f'{{"id":"{ag_id}"}}',
+            payload=json.dumps({'id': ag_id}),
             timeout_ms=timeout_ms)
-        if result_obj:
+        if isinstance(result_obj, dict):
             if 'result' in result_obj:
                 return result_obj['result']
             if 'error' in result_obj:
@@ -1464,19 +1475,20 @@ class MipsLocalClient(_MipsClient):
             mid=self.__gen_mips_id,
             on_reply=on_reply,
             on_reply_ctx=on_reply_ctx,
-            timer=None)
+            timer=None, log_payload=topic not in (
+                'proxy/getMijiaActionGroupList', 'proxy/execMijiaActionGroup'))
         pub_topic: str = f'master/{topic}'
         result = self.__mips_publish(
             topic=pub_topic, payload=payload, mid=req.mid,
             ret_topic=self._reply_topic)
         self.log_debug(
             f'mips local call api, {result}, {req.mid}, {pub_topic}, '
-            f'{payload}')
+            f'{payload if req.log_payload else "[scene]"}')
 
         def on_request_timeout(req: _MipsRequest):
             self.log_error(
                 f'on mips request timeout, {req.mid}, {pub_topic}'
-                f', {payload}')
+                f', {payload if req.log_payload else "[scene]"}')
             self._request_map.pop(str(req.mid), None)
             req.on_reply(
                 '{"error":{"code":-10006, "message":"timeout"}}',
@@ -1532,10 +1544,11 @@ class MipsLocalClient(_MipsClient):
         #     f"mips local client, on_message, {topic} -> {mips_msg}")
         # Reply
         if topic == self._reply_topic:
-            self.log_debug(f'on request reply, {mips_msg}')
             req: Optional[_MipsRequest] = self._request_map.pop(
                 str(mips_msg.mid), None)
             if req:
+                if req.log_payload:
+                    self.log_debug(f'on request reply, {mips_msg}')
                 # Cancel timer
                 if req.timer:
                     req.timer.cancel()
@@ -1631,7 +1644,14 @@ class MipsLocalClient(_MipsClient):
 
         def on_msg_reply(payload: str, ctx: Any):
             fut: asyncio.Future = ctx
-            if fut:
+            if topic in (
+                    'proxy/getMijiaActionGroupList',
+                    'proxy/execMijiaActionGroup'):
+                def complete_scene_reply():
+                    if not fut.done():
+                        fut.set_result(payload)
+                self.main_loop.call_soon_threadsafe(complete_scene_reply)
+            elif fut:
                 self.main_loop.call_soon_threadsafe(fut.set_result, payload)
         if not self.__request_external(
                 topic=topic,
@@ -1648,7 +1668,9 @@ class MipsLocalClient(_MipsClient):
         except json.JSONDecodeError:
             return {
                 'code': MIoTErrorCode.CODE_MIPS_INVALID_RESULT.value,
-                'message': f'Error: {result}'}
+                'message': ('invalid scene response' if topic in (
+                    'proxy/getMijiaActionGroupList',
+                    'proxy/execMijiaActionGroup') else f'Error: {result}')}
 
     async def __get_prop_timer_handle(self) -> None:
         for did in list(self._get_prop_queue.keys()):

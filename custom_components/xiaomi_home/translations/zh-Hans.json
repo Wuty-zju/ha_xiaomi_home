@@ -49,7 +49,8 @@
                     "action_debug": "Action 调试模式",
                     "hide_non_standard_entities": "隐藏非标准生成实体",
                     "display_binary_mode": "二进制传感器显示模式",
-                    "display_devices_changed_notify": "显示设备状态变化通知"
+                    "display_devices_changed_notify": "显示设备状态变化通知",
+                    "enable_manual_scenes": "启用米家手动场景"
                 }
             },
             "devices_filter": {
@@ -125,7 +126,8 @@
                     "update_trans_rules": "更新实体转换规则",
                     "update_lan_ctrl_config": "更新局域网控制配置",
                     "network_detect_config": "集成网络配置",
-                    "cover_dead_zone_width": "窗帘盲区宽度"
+                    "cover_dead_zone_width": "窗帘盲区宽度",
+                    "enable_manual_scenes": "启用米家手动场景"
                 }
             },
             "update_user_info": {
@@ -220,6 +222,25 @@
             "re_add": "请重新添加集成，错误信息：{error}",
             "storage_error": "集成存储模块异常。请重试或者重新添加集成：{error}",
             "inconsistent_account": "账号信息不一致。请使用正确的账号登录。"
+        }
+    },
+    "device": {
+        "manual_scenes": {
+            "name": "米家手动场景"
+        }
+    },
+    "exceptions": {
+        "scene_unavailable": {
+            "message": "场景没有可用的执行通道。"
+        },
+        "scene_busy": {
+            "message": "此场景正在执行。"
+        },
+        "scene_failed": {
+            "message": "场景执行请求被拒绝。"
+        },
+        "scene_result_unknown": {
+            "message": "场景执行结果未知，不会自动重试。"
         }
     }
 }
