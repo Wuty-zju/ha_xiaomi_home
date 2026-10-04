@@ -1442,7 +1442,11 @@ class MipsLocalClient(_MipsClient):
             topic='proxy/execMijiaActionGroup',
             payload=json.dumps({'id': ag_id}),
             timeout_ms=timeout_ms)
-        if isinstance(result_obj, dict) and 'error' not in result_obj:
+        if (isinstance(result_obj, dict) and 'error' not in result_obj
+                and ('code' not in result_obj or (
+                    isinstance(result_obj['code'], int)
+                    and not isinstance(result_obj['code'], bool)
+                    and result_obj['code'] == 0))):
             result = result_obj.get('result')
             if isinstance(result, dict):
                 return result

@@ -667,7 +667,7 @@ class MIoTClient:
                     if (not isinstance(result, dict)
                             or not isinstance(result.get('code'), int)
                             or isinstance(result['code'], bool)
-                            or result['code'] != 0):
+                            or result['code'] not in (0, 1)):
                         raise MIoTClientError('scene_result_unknown')
                 else:
                     if not self._network.network_status:
