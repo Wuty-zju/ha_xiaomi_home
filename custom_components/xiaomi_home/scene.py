@@ -73,6 +73,7 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback
 ) -> None:
     """Set up manual scenes using the entry's existing client."""
+    # pylint: disable=unused-argument
     client: MIoTClient = hass.data[DOMAIN]['miot_clients'][
         config_entry.entry_id]
     _prepare_scene_registry(hass, config_entry, client)
@@ -119,7 +120,8 @@ async def async_setup_entry(
             entities[key] = entity
             added.append(entity)
         if added:
-            async_add_entities(added)
+            # Reconcile later metadata only after registration has finished.
+            await platform.async_add_entities(added)
 
     @callback
     def schedule_sync() -> None:
