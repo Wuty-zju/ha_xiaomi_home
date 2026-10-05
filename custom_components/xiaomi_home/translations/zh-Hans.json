@@ -37,7 +37,8 @@
                 "data": {
                     "home_infos": "导入设备的家庭",
                     "area_name_rule": "房间名同步模式",
-                    "advanced_options": "高级设置选项"
+                    "advanced_options": "高级设置选项",
+                    "enable_manual_scenes": "启用米家场景手动控制"
                 }
             },
             "advanced_options": {
@@ -49,8 +50,7 @@
                     "action_debug": "Action 调试模式",
                     "hide_non_standard_entities": "隐藏非标准生成实体",
                     "display_binary_mode": "二进制传感器显示模式",
-                    "display_devices_changed_notify": "显示设备状态变化通知",
-                    "enable_manual_scenes": "启用米家场景手动控制"
+                    "display_devices_changed_notify": "显示设备状态变化通知"
                 }
             },
             "devices_filter": {

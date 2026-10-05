@@ -37,7 +37,8 @@
                 "data": {
                     "home_infos": "Импорт семьи устройства",
                     "area_name_rule": "Режим синхронизации имени комнаты",
-                    "advanced_options": "Расширенные настройки"
+                    "advanced_options": "Расширенные настройки",
+                    "enable_manual_scenes": "Включить ручное управление сценами Xiaomi Home"
                 }
             },
             "advanced_options": {
@@ -49,8 +50,7 @@
                     "action_debug": "Режим отладки действий",
                     "hide_non_standard_entities": "Скрыть нестандартные сущности",
                     "display_binary_mode": "Режим отображения бинарного датчика",
-                    "display_devices_changed_notify": "Отображать уведомления о изменении состояния устройства",
-                    "enable_manual_scenes": "Включить ручное управление сценами Mijia"
+                    "display_devices_changed_notify": "Отображать уведомления о изменении состояния устройства"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "Обновить конфигурацию управления LAN",
                     "network_detect_config": "Интегрированная Сетевая Конфигурация",
                     "cover_dead_zone_width": "Ширина «мертвой зоны» шторы",
-                    "enable_manual_scenes": "Включить ручное управление сценами Mijia"
+                    "enable_manual_scenes": "Включить ручное управление сценами Xiaomi Home"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Ручное управление сценами Mijia"
+            "name": "Ручное управление сценами Xiaomi Home"
         }
     },
     "exceptions": {

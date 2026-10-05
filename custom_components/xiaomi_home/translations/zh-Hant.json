@@ -37,7 +37,8 @@
                 "data": {
                     "home_infos": "導入設備的家庭",
                     "area_name_rule": "房間名同步模式",
-                    "advanced_options": "高級設置選項"
+                    "advanced_options": "高級設置選項",
+                    "enable_manual_scenes": "啟用米家場景手動控制"
                 }
             },
             "advanced_options": {
@@ -49,8 +50,7 @@
                     "action_debug": "Action 調試模式",
                     "hide_non_standard_entities": "隱藏非標準生成實體",
                     "display_binary_mode": "二進制傳感器顯示模式",
-                    "display_devices_changed_notify": "顯示設備狀態變化通知",
-                    "enable_manual_scenes": "啟用米家場景手動控制"
+                    "display_devices_changed_notify": "顯示設備狀態變化通知"
                 }
             },
             "devices_filter": {

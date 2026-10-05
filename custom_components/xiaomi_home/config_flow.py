@@ -166,7 +166,7 @@ class XiaomiMihomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._ctrl_mode = DEFAULT_CTRL_MODE
         self._area_name_rule = self.DEFAULT_AREA_NAME_RULE
         self._action_debug = False
-        self._enable_manual_scenes = False
+        self._enable_manual_scenes = True
         self._hide_non_standard_entities = False
         self._display_binary_mode = ['bool']
         self._display_devices_changed_notify = ['add', 'del', 'offline']
@@ -684,6 +684,8 @@ class XiaomiMihomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             if not user_input:
                 return await self.__show_homes_select_form('')
 
+            self._enable_manual_scenes = user_input.get(
+                'enable_manual_scenes', self._enable_manual_scenes)
             home_selected: list = user_input.get('home_infos', [])
             if not home_selected:
                 return await self.__show_homes_select_form(
@@ -743,6 +745,10 @@ class XiaomiMihomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 ): vol.In(self._miot_i18n.translate(
                     key='config.room_name_rule')),
                 vol.Required(
+                    'enable_manual_scenes',
+                    default=self._enable_manual_scenes  # type: ignore
+                ): bool,
+                vol.Required(
                     'advanced_options', default=False  # type: ignore
                 ): bool,
             }),
@@ -758,8 +764,6 @@ class XiaomiMihomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     ):
         if user_input:
             self._ctrl_mode = user_input.get('ctrl_mode', self._ctrl_mode)
-            self._enable_manual_scenes = user_input.get(
-                'enable_manual_scenes', self._enable_manual_scenes)
             self._action_debug = user_input.get(
                 'action_debug', self._action_debug)
             self._hide_non_standard_entities = user_input.get(
@@ -781,10 +785,6 @@ class XiaomiMihomeConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 vol.Required(
                     'ctrl_mode', default=self._ctrl_mode  # type: ignore
                 ): vol.In(self._miot_i18n.translate(key='config.control_mode')),
-                vol.Required(
-                    'enable_manual_scenes',
-                    default=self._enable_manual_scenes  # type: ignore
-                ): bool,
                 vol.Required(
                     'action_debug', default=self._action_debug  # type: ignore
                 ): bool,
