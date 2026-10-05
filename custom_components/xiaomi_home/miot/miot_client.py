@@ -1526,6 +1526,7 @@ class MIoTClient:
         await self.__invalidate_scene_route_async(group_id)
         if state:
             # Connected
+            self.__request_scene_route_refresh(group_id)
             self.__request_refresh_gw_devices_by_group_id(group_id=group_id)
         else:
             # Disconnect
