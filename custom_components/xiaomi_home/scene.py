@@ -231,6 +231,7 @@ class ManualScene(Scene):
             self._scene_key, self._handle_scene_state)
         self.async_on_remove(lambda: self._client.unsub_manual_scene_state(
             self._scene_key))
+        self._handle_scene_state()
 
     @callback
     def _handle_scene_state(self) -> None:
