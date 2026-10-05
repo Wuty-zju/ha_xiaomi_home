@@ -242,6 +242,7 @@ class ManualScene(Scene):
         self.async_write_ha_state()
 
     async def async_activate(self, **kwargs: Any) -> None:
+        # pylint: disable=unused-argument
         try:
             await self._client.run_manual_scene_async(self._scene_key)
         except MIoTClientError as err:
