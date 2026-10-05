@@ -37,7 +37,8 @@
                 "data": {
                     "home_infos": "Import Device's Family",
                     "area_name_rule": "Room Name Sync Mode",
-                    "advanced_options": "Advanced Settings"
+                    "advanced_options": "Advanced Settings",
+                    "enable_manual_scenes": "Enable Xiaomi Home Scenes Manual Controls"
                 }
             },
             "advanced_options": {
@@ -49,8 +50,7 @@
                     "action_debug": "Action Debug Mode",
                     "hide_non_standard_entities": "Hide Non-Standard Generated Entities",
                     "display_binary_mode": "Binary Sensor Display Mode",
-                    "display_devices_changed_notify": "Display Device Status Change Notifications",
-                    "enable_manual_scenes": "Enable Mijia Scenes Manual controls"
+                    "display_devices_changed_notify": "Display Device Status Change Notifications"
                 }
             },
             "devices_filter": {
@@ -127,7 +127,7 @@
                     "update_lan_ctrl_config": "Update LAN control configuration",
                     "network_detect_config": "Integrated network configuration",
                     "cover_dead_zone_width": "Cover dead zone width",
-                    "enable_manual_scenes": "Enable Mijia Scenes Manual controls"
+                    "enable_manual_scenes": "Enable Xiaomi Home Scenes Manual Controls"
                 }
             },
             "update_user_info": {
@@ -226,7 +226,7 @@
     },
     "device": {
         "manual_scenes": {
-            "name": "Mijia Scenes Manual controls"
+            "name": "Xiaomi Home Scenes Manual Controls"
         }
     },
     "exceptions": {

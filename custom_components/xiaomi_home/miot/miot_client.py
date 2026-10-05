@@ -249,6 +249,7 @@ class MIoTClient:
         self._scene_routes: dict[str, _MIoTSceneRoute] = {}
         self._scene_route_tasks: dict[str, asyncio.Task] = {}
         self._scene_metadata_task: Optional[asyncio.Task] = None
+        self._scene_cache_loaded = False
         self._scene_metadata_timer: Optional[asyncio.TimerHandle] = None
         self._scene_exec_tasks: set[asyncio.Task] = set()
         self._scene_in_flight: set[str] = set()
@@ -501,12 +502,14 @@ class MIoTClient:
     @property
     def manual_scene_device_id(self) -> str:
         """Stable identifier for this account's scene device."""
-        return f'mijia.scenes.manual_controls.{self.__scene_identity()}'
+        return (f'xiaomi_home.scenes.manual_controls.'
+                f'{self._cloud_server}_{self._uid}')
 
     @property
     def manual_scene_device_ids(self) -> set[str]:
         """Current and legacy identifiers owned by this account and region."""
         return {self.manual_scene_device_id,
+                f'mijia.scenes.manual_controls.{self.__scene_identity()}',
                 f'manual_scenes.{self.__scene_identity()}'}
 
     @property
@@ -547,38 +550,47 @@ class MIoTClient:
             scenes[key] = scene
         return scenes
 
-    async def load_manual_scenes_async(self) -> None:
+    async def load_manual_scenes_async(self, cache_only: bool = False) -> None:
         """Coalesce metadata refreshes without coupling caller cancellation."""
-        if not self._manual_scenes_enabled:
+        if (not self._manual_scenes_enabled
+                or cache_only and self._scene_cache_loaded):
             return
         if self._scene_metadata_task is None:
             self._scene_metadata_task = self._main_loop.create_task(
-                self.__load_manual_scenes_async())
+                self.__load_manual_scenes_async(cache_only=cache_only))
         await asyncio.shield(self._scene_metadata_task)
 
     def __request_scene_metadata_refresh(self) -> None:
         if self._scene_metadata_timer:
             self._scene_metadata_timer.cancel()
             self._scene_metadata_timer = None
-        if self._manual_scenes_enabled and self._scene_metadata_task is None:
+        if (self._manual_scenes_enabled and self._scene_cache_loaded
+                and self._scene_metadata_task is None):
             self._scene_metadata_task = self._main_loop.create_task(
                 self.__load_manual_scenes_async())
 
-    async def __load_manual_scenes_async(self) -> None:
+    async def __load_manual_scenes_async(
+        self, cache_only: bool = False
+    ) -> None:
         try:
-            await self.__update_manual_scenes_async()
+            await self.__update_manual_scenes_async(cache_only=cache_only)
         except (MIoTError, ClientError, OSError, ValueError):
             _LOGGER.error('manual scene metadata refresh failed')
         finally:
             self._scene_metadata_task = None
-            if self._manual_scenes_enabled:
+            self._scene_cache_loaded = True
+            if cache_only:
+                self.__request_scene_metadata_refresh()
+            elif self._manual_scenes_enabled:
                 if self._scene_metadata_timer:
                     self._scene_metadata_timer.cancel()
                 self._scene_metadata_timer = self._main_loop.call_later(
                     REFRESH_SCENES_INTERVAL,
                     self.__request_scene_metadata_refresh)
 
-    async def __update_manual_scenes_async(self) -> None:
+    async def __update_manual_scenes_async(
+        self, cache_only: bool = False
+    ) -> None:
         """Refresh complete homes; retain metadata when a home fails."""
         if not self._manual_scenes_enabled:
             return
@@ -601,7 +613,7 @@ class MIoTClient:
                 continue
             records = homes.get(home_id, [])
             try:
-                if self._network.network_status:
+                if not cache_only and self._network.network_status:
                     records = await asyncio.wait_for(
                         self._http.get_manual_scenes_async(owner, home_id), 20)
                 scenes = self.__parse_manual_scenes(home_id, owner, records)
@@ -623,6 +635,8 @@ class MIoTClient:
             self.__request_scene_route_refresh(home.get('group_id'))
         self._manual_scenes = updated
         self.__notify_manual_scene_state()
+        if cache_only:
+            return
         if not await self._storage.save_async(
                 domain='miot_scenes', name=f'{self._uid}_{self._cloud_server}',
                 data={'version': 1, 'homes': saved}):

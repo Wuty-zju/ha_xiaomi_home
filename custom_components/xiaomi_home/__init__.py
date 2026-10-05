@@ -387,8 +387,6 @@ async def async_remove_entry(
     # Clean manual scene metadata
     await miot_storage.remove_async(
         domain='miot_scenes', name=f'{uid}_{cloud_server}', type_=dict)
-    await miot_storage.remove_async(
-        domain='miot_scene_registry', name=f'{uid}_{cloud_server}', type_=dict)
     # Clean user configuration
     await miot_storage.update_user_config_async(
         uid=uid, cloud_server=cloud_server, config=None)
