@@ -505,12 +505,14 @@ class MIoTClient:
     def manual_scene_device_id(self) -> str:
         """Stable identifier for this account's scene device."""
         return (f'xiaomi_home.scenes.manual_controls.'
-                f'{self._cloud_server}_{self._uid}')
+                f'{self._cloud_server}{self._uid}')
 
     @property
     def manual_scene_device_ids(self) -> set[str]:
         """Current and legacy identifiers owned by this account and region."""
         return {self.manual_scene_device_id,
+                f'xiaomi_home.scenes.manual_controls.'
+                f'{self._cloud_server}_{self._uid}',
                 f'mijia.scenes.manual_controls.{self.__scene_identity()}',
                 f'manual_scenes.{self.__scene_identity()}'}
 

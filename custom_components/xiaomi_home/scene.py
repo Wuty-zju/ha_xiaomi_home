@@ -203,13 +203,13 @@ class ManualScene(Scene):
         home_name = home.get('home_name') or scene.home_id
         home_slug = slugify_name(home_name) or 'home'
         scene_slug = slugify_name(scene.scene_id) or 'scene'
-        self.entity_id = ('scene.xiaomi_home_scenes_manual_controls_'
+        self.entity_id = ('scene.xiaomi_home_scenes_manual_controls'
                           f'{home_slug}_{scene_slug}')
         self._attr_name = scene.scene_name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, client.manual_scene_device_id)},
             translation_key='manual_scenes',
-            manufacturer='Xiaomi', model='Scenes Manual Controls',
+            manufacturer='Xiaomi', model='xiaomi_home.scenes.manual_controls',
             sw_version=INTEGRATION_VERSION,
             configuration_url=(
                 'homeassistant://config/integrations/integration/xiaomi_home'),
