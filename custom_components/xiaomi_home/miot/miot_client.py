@@ -247,6 +247,7 @@ class MIoTClient:
         self._manual_scenes_enabled = entry_data.get(
             'enable_manual_scenes', False)
         self._manual_scenes: dict[str, MIoTManualScene] = {}
+        self._scene_metadata_owners: dict[str, str] = {}
         self._scene_routes: dict[str, _MIoTSceneRoute] = {}
         self._scene_route_tasks: dict[str, asyncio.Task] = {}
         self._scene_metadata_task: Optional[asyncio.Task] = None
@@ -430,6 +431,7 @@ class MIoTClient:
         self._scene_route_tasks.clear()
         self._scene_state_subs.clear()
         self._scene_routes.clear()
+        self._scene_metadata_owners.clear()
         self._network.unsub_network_status(
             key=f'{self._uid}-{self._cloud_server}')
         # Cancel refresh props
@@ -512,12 +514,14 @@ class MIoTClient:
     def manual_scene_device_id(self) -> str:
         """Stable identifier for this account's scene device."""
         return (f'xiaomi_home.scenes.manual_controls.'
-                f'{self._cloud_server}_{self._uid}')
+                f'{self._cloud_server}{self._uid}')
 
     @property
     def manual_scene_device_ids(self) -> set[str]:
         """Current and legacy identifiers owned by this account and region."""
         return {self.manual_scene_device_id,
+                f'xiaomi_home.scenes.manual_controls.'
+                f'{self._cloud_server}_{self._uid}',
                 f'mijia.scenes.manual_controls.{self.__scene_identity()}',
                 f'manual_scenes.{self.__scene_identity()}'}
 
@@ -603,9 +607,13 @@ class MIoTClient:
         """Refresh complete homes; retain metadata when a home fails."""
         if not self._manual_scenes_enabled:
             return
-        cached = await self._storage.load_async(
-            domain='miot_scenes', name=f'{self._uid}_{self._cloud_server}',
-            type_=dict)
+        try:
+            cached = await self._storage.load_async(
+                domain='miot_scenes', name=f'{self._uid}_{self._cloud_server}',
+                type_=dict)
+        except (MIoTError, OSError, ValueError):
+            _LOGGER.info('manual scene cache unavailable')
+            cached = None
         homes = (cached.get('homes', {}) if isinstance(cached, dict)
                  and isinstance(cached.get('version'), int)
                  and not isinstance(cached['version'], bool)
@@ -614,35 +622,47 @@ class MIoTClient:
             homes = {}
         saved = {}
         updated = {}
+        owners = {}
         for home_id, home in self._entry_data['home_selected'].items():
             try:
                 home_id = self.__scene_id(home_id)
                 owner = self.__scene_id(home.get('uid'))
             except MIoTClientError:
                 continue
-            records = homes.get(home_id, [])
-            try:
-                if not cache_only and self._network.network_status:
+            scenes = None
+            if not cache_only and self._network.network_status:
+                try:
                     records = await asyncio.wait_for(
                         self._http.get_manual_scenes_async(owner, home_id), 20)
-                scenes = self.__parse_manual_scenes(home_id, owner, records)
-            except (MIoTError, ClientError, TimeoutError, OSError, ValueError):
-                _LOGGER.info('manual scene list unavailable for a home')
-                records = homes.get(home_id, [])
-                try:
-                    if not isinstance(records, list):
-                        raise MIoTClientError('scene_unavailable') from None
                     scenes = self.__parse_manual_scenes(
                         home_id, owner, records)
-                except MIoTClientError:
-                    continue
+                except (
+                    MIoTError, ClientError, TimeoutError, OSError, ValueError
+                ):
+                    _LOGGER.info('manual scene list unavailable for a home')
+            if scenes is None:
+                if self._scene_metadata_owners.get(home_id) == owner:
+                    # Remember successful empty homes too, so an old disk
+                    # snapshot cannot resurrect scenes after a failed save.
+                    scenes = {key: scene for key, scene in
+                              self._manual_scenes.items()
+                              if scene.home_id == home_id
+                              and scene.owner_uid == owner}
+                else:
+                    try:
+                        scenes = self.__parse_manual_scenes(
+                            home_id, owner, homes.get(home_id))
+                    except MIoTClientError:
+                        continue
             updated.update(scenes)
+            owners[home_id] = owner
             saved[home_id] = [
                 {'scene_id': scene.scene_id, 'scene_name': scene.scene_name,
                  'home_id': home_id, 'owner_uid': owner,
                  'room_id': scene.room_id} for scene in scenes.values()]
             self.__request_scene_route_refresh(home.get('group_id'))
         self._manual_scenes = updated
+        self._scene_metadata_owners = owners
         self.__notify_manual_scene_state()
         if cache_only:
             return
@@ -1534,6 +1554,7 @@ class MIoTClient:
         await self.__invalidate_scene_route_async(group_id)
         if state:
             # Connected
+            self.__request_scene_route_refresh(group_id)
             self.__request_refresh_gw_devices_by_group_id(group_id=group_id)
         else:
             # Disconnect
