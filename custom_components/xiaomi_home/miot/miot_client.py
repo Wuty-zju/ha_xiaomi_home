@@ -89,6 +89,8 @@ REFRESH_CLOUD_DEVICES_RETRY_DELAY = 60
 REFRESH_GATEWAY_DEVICES_DELAY = 3
 REFRESH_SCENES_INTERVAL = 600
 REFRESH_SCENE_RETRY_DELAYS = (3, 15, 60, 300)
+SCENE_FAILURE_WARNING_DELAY = 120
+SCENE_FAILURE_WARNING_INTERVAL = 1800
 
 @dataclass
 class MIoTClientSub:
@@ -718,6 +720,8 @@ class MIoTClient:
         self, group: str, route: _MIoTSceneRoute
     ) -> None:
         attempt = 0
+        failed_since = None
+        warned_at = None
         while (self._manual_scenes_enabled and self._ctrl_mode == CtrlMode.AUTO
                and self._scene_routes.get(group) is route
                and self._mips_local.get(group) is route.client
@@ -741,10 +745,24 @@ class MIoTClient:
                                and not route.refresh.is_set() else None)
             self.__notify_manual_scene_state()
             if ids is None:
+                now = self._main_loop.time()
+                if failed_since is None:
+                    failed_since = now
+                _LOGGER.debug('manual scene list refresh failed, attempt=%d',
+                              attempt+1)
+                if (now-failed_since >= SCENE_FAILURE_WARNING_DELAY
+                        and (warned_at is None or now-warned_at
+                             >= SCENE_FAILURE_WARNING_INTERVAL)):
+                    _LOGGER.warning('manual scene hub discovery remains '
+                                    'unavailable; retrying in the background')
+                    warned_at = now
                 delay = REFRESH_SCENE_RETRY_DELAYS[min(
                     attempt, len(REFRESH_SCENE_RETRY_DELAYS)-1)]
                 attempt += 1
             else:
+                if warned_at is not None:
+                    _LOGGER.info('manual scene hub discovery recovered')
+                failed_since = warned_at = None
                 attempt = 0
                 delay = REFRESH_SCENES_INTERVAL
             try:
