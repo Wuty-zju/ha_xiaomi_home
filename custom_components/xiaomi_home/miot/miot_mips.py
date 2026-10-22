@@ -1157,6 +1157,7 @@ class MipsLocalClient(_MipsClient):
     _reply_ready: asyncio.Event
     _reply_sub_mid: Optional[int]
     _reply_generation: int
+    _reply_ready_generation: Optional[int]
 
     def __init__(
         self, did: str, host: str, group_id: str,
@@ -1178,6 +1179,7 @@ class MipsLocalClient(_MipsClient):
         self._reply_ready = asyncio.Event()
         self._reply_sub_mid = None
         self._reply_generation = 0
+        self._reply_ready_generation = None
 
         super().__init__(
             client_id=did, host=host, port=port,
@@ -1497,7 +1499,9 @@ class MipsLocalClient(_MipsClient):
             on_reply_ctx: Any = None, timeout_ms: int = 10000,
             generation: Optional[int] = None
     ) -> None:
-        if (generation != self._reply_generation or not self.mips_state
+        if (generation != self._reply_generation
+                or generation != self._reply_ready_generation
+                or not self.mips_state
                 or isinstance(on_reply_ctx, asyncio.Future)
                 and on_reply_ctx.done()):
             on_reply('{"error":{"code":-10006}}', on_reply_ctx)
@@ -1555,6 +1559,7 @@ class MipsLocalClient(_MipsClient):
         self.log_debug('__on_mips_connect_handler')
         self._reply_generation += 1
         self._reply_sub_mid = None
+        self._reply_ready_generation = None
         self.main_loop.call_soon_threadsafe(
             self.__set_reply_ready, self._reply_generation, False)
         # Sub did/#, include reply topic
@@ -1572,6 +1577,7 @@ class MipsLocalClient(_MipsClient):
     def _on_mips_disconnect(self, rc: int, props: dict) -> None:
         self._reply_generation += 1
         self._reply_sub_mid = None
+        self._reply_ready_generation = None
         self.main_loop.call_soon_threadsafe(
             self.__set_reply_ready, self._reply_generation, False)
         for req in list(self._request_map.values()):
@@ -1597,6 +1603,7 @@ class MipsLocalClient(_MipsClient):
         ready = bool(codes) and all(
             isinstance(code, int) and not isinstance(code, bool)
             and 0 <= code < 128 for code in codes)
+        self._reply_ready_generation = self._reply_generation if ready else None
         self.log_debug(
             f'mips reply subscription acknowledgement, '
             f'generation={self._reply_generation}, codes={codes}')
@@ -1687,13 +1694,14 @@ class MipsLocalClient(_MipsClient):
     def __request_external(
             self, topic: str, payload: str,
             on_reply: Callable[[str, Any], None],
-            on_reply_ctx: Any = None, timeout_ms: int = 10000
+            on_reply_ctx: Any = None, timeout_ms: int = 10000,
+            generation: Optional[int] = None
     ) -> bool:
         if topic is None or payload is None or on_reply is None:
             raise MIoTMipsError('invalid params')
         self._internal_loop.call_soon_threadsafe(
             self.__request, topic, payload, on_reply, on_reply_ctx, timeout_ms,
-            self._reply_generation)
+            generation)
         return True
 
     def __reg_broadcast_external(
@@ -1715,6 +1723,7 @@ class MipsLocalClient(_MipsClient):
         self, topic: str, payload: str, timeout_ms: int = 10000
     ) -> dict:
         deadline = self.main_loop.time() + timeout_ms/1000
+        generation = self._reply_generation
         if not self.mips_state:
             return {'error': {'code': -10006}}
         if not self._reply_ready.is_set():
@@ -1744,6 +1753,9 @@ class MipsLocalClient(_MipsClient):
                 log(f'mips reply subscription not ready, '
                     f'generation={self._reply_generation}')
                 return {'error': {'code': -10006}}
+        if (generation != self._reply_generation
+                or not self._reply_ready.is_set()):
+            return {'error': {'code': -10006}}
         remaining_ms = int((deadline-self.main_loop.time())*1000)
         if remaining_ms <= 0:
             return {'error': {'code': -10006}}
@@ -1751,21 +1763,19 @@ class MipsLocalClient(_MipsClient):
 
         def on_msg_reply(payload: str, ctx: Any):
             fut: asyncio.Future = ctx
-            if topic in (
-                    'proxy/getMijiaActionGroupList',
-                    'proxy/execMijiaActionGroup'):
-                def complete_scene_reply():
-                    if not fut.done():
-                        fut.set_result(payload)
-                self.main_loop.call_soon_threadsafe(complete_scene_reply)
-            elif fut:
-                self.main_loop.call_soon_threadsafe(fut.set_result, payload)
+
+            def complete_reply():
+                # Cancellation can happen before this queued callback runs.
+                if fut and not fut.done():
+                    fut.set_result(payload)
+
+            self.main_loop.call_soon_threadsafe(complete_reply)
         if not self.__request_external(
                 topic=topic,
                 payload=payload,
                 on_reply=on_msg_reply,
                 on_reply_ctx=fut_handler,
-                timeout_ms=remaining_ms):
+                timeout_ms=remaining_ms, generation=generation):
             # Request error
             fut_handler.set_result('internal request error')
 
