@@ -252,6 +252,7 @@ class MIoTClient:
         self._scene_routes: dict[str, _MIoTSceneRoute] = {}
         self._scene_route_tasks: dict[str, asyncio.Task] = {}
         self._scene_metadata_task: Optional[asyncio.Task] = None
+        self._scene_metadata_refresh_pending = False
         self._scene_cache_loaded = False
         self._scene_metadata_timer: Optional[asyncio.TimerHandle] = None
         self._scene_exec_tasks: set[asyncio.Task] = set()
@@ -417,6 +418,7 @@ class MIoTClient:
 
     async def deinit_async(self) -> None:
         self._manual_scenes_enabled = False
+        self._scene_metadata_refresh_pending = False
         if self._scene_metadata_timer:
             self._scene_metadata_timer.cancel()
             self._scene_metadata_timer = None
@@ -570,10 +572,14 @@ class MIoTClient:
         if self._scene_metadata_timer:
             self._scene_metadata_timer.cancel()
             self._scene_metadata_timer = None
-        if (self._manual_scenes_enabled and self._scene_cache_loaded
-                and self._scene_metadata_task is None):
-            self._scene_metadata_task = self._main_loop.create_task(
-                self.__load_manual_scenes_async())
+        if (not self._manual_scenes_enabled or not self._scene_cache_loaded
+                or not self._network.network_status):
+            return
+        if self._scene_metadata_task is not None:
+            self._scene_metadata_refresh_pending = True
+            return
+        self._scene_metadata_task = self._main_loop.create_task(
+            self.__load_manual_scenes_async())
 
     async def __load_manual_scenes_async(
         self, cache_only: bool = False
@@ -585,7 +591,9 @@ class MIoTClient:
         finally:
             self._scene_metadata_task = None
             self._scene_cache_loaded = True
-            if cache_only:
+            pending = self._scene_metadata_refresh_pending
+            self._scene_metadata_refresh_pending = False
+            if cache_only or pending:
                 self.__request_scene_metadata_refresh()
             elif self._manual_scenes_enabled:
                 if self._scene_metadata_timer:
@@ -1448,12 +1456,11 @@ class MIoTClient:
     @final
     async def __on_network_status_changed(self, status: bool) -> None:
         self.__notify_manual_scene_state()
-        if status:
-            self.__request_scene_metadata_refresh()
         _LOGGER.info('network status changed, %s', status)
         if status:
             # Check auth_info
             if await self.refresh_oauth_info_async():
+                self.__request_scene_metadata_refresh()
                 # Connect to mips cloud
                 self._mips_cloud.connect()
                 # Update device list
