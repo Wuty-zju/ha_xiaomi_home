@@ -377,7 +377,8 @@ class MIoTHttpClient:
         res_obj: dict = json.loads(res_str)
         if certificate_request:
             if (not isinstance(res_obj, dict)
-                    or type(res_obj.get('code')) is not int):
+                    or not isinstance(res_obj.get('code'), int)
+                    or isinstance(res_obj['code'], bool)):
                 raise MIoTHttpError('invalid certificate response')
             if res_obj['code'] != 0:
                 raise MIoTHttpError(
