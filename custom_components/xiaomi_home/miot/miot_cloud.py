@@ -361,6 +361,7 @@ class MIoTHttpClient:
         timeout: int = MIHOME_HTTP_API_TIMEOUT,
         scene_request: bool = False
     ) -> dict:
+        certificate_request = url_path == '/app/v2/ha/oauth/get_central_crt'
         host = self._scene_host if scene_request else self._host
         headers = self.__api_request_headers
         headers['Host'] = host
@@ -373,6 +374,9 @@ class MIoTHttpClient:
                     'mihome api post failed, unauthorized(401)',
                     MIoTErrorCode.CODE_HTTP_INVALID_ACCESS_TOKEN)
             if http_res.status != 200:
+                if certificate_request:
+                    raise MIoTHttpError(
+                        f'certificate request failed, HTTP {http_res.status}')
                 detail = '' if scene_request else f', {url_path}, {data}'
                 raise MIoTHttpError(
                     f'mihome api post failed, {http_res.status}{detail}')
@@ -390,6 +394,15 @@ class MIoTHttpClient:
             if res_obj['code'] != 0:
                 raise MIoTHttpError(
                     f'scene request failed, code={res_obj["code"]}')
+            return res_obj
+        if certificate_request:
+            if (not isinstance(res_obj, dict)
+                    or type(res_obj.get('code')) is not int):
+                raise MIoTHttpError('invalid certificate response')
+            if res_obj['code'] != 0:
+                raise MIoTHttpError(
+                    f'certificate request failed, code={res_obj["code"]}')
+            _LOGGER.debug('certificate request completed')
             return res_obj
         if res_obj.get('code', None) != 0:
             raise MIoTHttpError(
@@ -466,7 +479,7 @@ class MIoTHttpClient:
                 'csr': str(base64.b64encode(csr.encode('utf-8')), 'utf-8')
             }
         )
-        if 'result' not in res_obj:
+        if not isinstance(res_obj.get('result'), dict):
             raise MIoTHttpError('invalid response result')
         cert: str = res_obj['result'].get('cert', None)
         if not isinstance(cert, str):
