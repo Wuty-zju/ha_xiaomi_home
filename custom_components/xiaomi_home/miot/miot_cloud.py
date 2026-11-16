@@ -356,6 +356,7 @@ class MIoTHttpClient:
         self, url_path: str, data: dict,
         timeout: int = MIHOME_HTTP_API_TIMEOUT
     ) -> dict:
+        certificate_request = url_path == '/app/v2/ha/oauth/get_central_crt'
         http_res = await self._session.post(
             url=f'{self._base_url}{url_path}',
             json=data,
@@ -366,11 +367,23 @@ class MIoTHttpClient:
                 'mihome api get failed, unauthorized(401)',
                 MIoTErrorCode.CODE_HTTP_INVALID_ACCESS_TOKEN)
         if http_res.status != 200:
+            if certificate_request:
+                raise MIoTHttpError(
+                    f'certificate request failed, HTTP {http_res.status}')
             raise MIoTHttpError(
                 f'mihome api post failed, {http_res.status}, '
                 f'{url_path}, {data}')
         res_str = await http_res.text()
         res_obj: dict = json.loads(res_str)
+        if certificate_request:
+            if (not isinstance(res_obj, dict)
+                    or type(res_obj.get('code')) is not int):
+                raise MIoTHttpError('invalid certificate response')
+            if res_obj['code'] != 0:
+                raise MIoTHttpError(
+                    f'certificate request failed, code={res_obj["code"]}')
+            _LOGGER.debug('certificate request completed')
+            return res_obj
         if res_obj.get('code', None) != 0:
             raise MIoTHttpError(
                 f'invalid response code, {res_obj.get("code",None)}, '
@@ -414,7 +427,7 @@ class MIoTHttpClient:
                 'csr': str(base64.b64encode(csr.encode('utf-8')), 'utf-8')
             }
         )
-        if 'result' not in res_obj:
+        if not isinstance(res_obj.get('result'), dict):
             raise MIoTHttpError('invalid response result')
         cert: str = res_obj['result'].get('cert', None)
         if not isinstance(cert, str):
