@@ -85,6 +85,7 @@ _LOGGER = logging.getLogger(__name__)
 
 REFRESH_PROPS_DELAY = 0.2
 REFRESH_PROPS_RETRY_DELAY = 3
+REFRESH_PROPS_MAX_ATTEMPTS = 4
 REFRESH_CLOUD_DEVICES_DELAY = 6
 REFRESH_CLOUD_DEVICES_RETRY_DELAY = 60
 REFRESH_GATEWAY_DEVICES_DELAY = 3
@@ -102,6 +103,14 @@ class MIoTClientSub:
 
     def __str__(self) -> str:
         return f'{self.topic}, {id(self.handler)}, {id(self.handler_ctx)}'
+
+
+@dataclass
+class _MIoTPropertyRefresh:
+    """Retry budgets belong to one request, including during re-enqueue."""
+    params: dict
+    cloud_attempts: int = 0
+    attempts: int = 0
 
 
 @dataclass(frozen=True)
@@ -193,9 +202,8 @@ class MIoTClient:
     _refresh_cert_timer: Optional[asyncio.TimerHandle]
     _refresh_cloud_devices_timer: Optional[asyncio.TimerHandle]
     # Refresh prop
-    _refresh_props_list: dict[str, dict]
+    _refresh_props_list: dict[str, _MIoTPropertyRefresh]
     _refresh_props_timer: Optional[asyncio.TimerHandle]
-    _refresh_props_retry_count: dict[str, int]
     _refresh_props_task: Optional[asyncio.Task]
 
     # Persistence notify handler, params: notify_id, title, message
@@ -283,7 +291,6 @@ class MIoTClient:
         # Refresh prop
         self._refresh_props_list = {}
         self._refresh_props_timer = None
-        self._refresh_props_retry_count = {}
         self._refresh_props_task = None
 
         self._persistence_notify = None
@@ -453,7 +460,6 @@ class MIoTClient:
                 pass
             self._refresh_props_task = None
         self._refresh_props_list.clear()
-        self._refresh_props_retry_count.clear()
         # Cloud mips
         self._mips_cloud.unsub_mips_state(
             key=f'{self._uid}-{self._cloud_server}')
@@ -1179,8 +1185,8 @@ class MIoTClient:
         key: str = f'{did}|{siid}|{piid}'
         if key in self._refresh_props_list:
             return
-        self._refresh_props_list[key] = {
-            'did': did, 'siid': siid, 'piid': piid}
+        self._refresh_props_list[key] = _MIoTPropertyRefresh(
+            {'did': did, 'siid': siid, 'piid': piid})
         if self._refresh_props_timer:
             return
         self._refresh_props_timer = self._main_loop.call_later(
@@ -2123,33 +2129,37 @@ class MIoTClient:
 
     @final
     async def __refresh_props_from_cloud(
-        self, patch_len: int = 150, attempted: Optional[set[str]] = None,
-        deferred: Optional[set[str]] = None
+        self, attempted: dict[str, _MIoTPropertyRefresh], deferred: set[str],
+        patch_len: int = 150
     ) -> bool:
         if not self._network.network_status:
             return False
-        attempted = attempted if attempted is not None else set()
-        deferred = deferred if deferred is not None else set()
-        requests = {key: self._refresh_props_list[key]
-                    for key in list(self._refresh_props_list)[:patch_len]}
+        requests = {}
+        for key, request in self._refresh_props_list.items():
+            if request.cloud_attempts >= REFRESH_PROPS_MAX_ATTEMPTS:
+                continue
+            if len(requests) >= patch_len:
+                deferred.add(key)
+                continue
+            request.cloud_attempts += 1
+            requests[key] = request
         if not requests:
             return False
         attempted.update(requests)
-        deferred.update(set(self._refresh_props_list) - requests.keys())
         succeeded = False
         try:
             results = await self._http.get_props_async(
-                params=list(requests.values()))
+                params=[request.params for request in requests.values()])
             for result in results if isinstance(results, list) else []:
                 if not isinstance(result, dict):
                     continue
                 key = (f'{result.get("did")}|{result.get("siid")}|'
                        f'{result.get("piid")}')
-                params = requests.get(key)
-                if (params is None
-                        or self._refresh_props_list.get(key) is not params
+                request = requests.get(key)
+                if (request is None
+                        or self._refresh_props_list.get(key) is not request
                         or not MIoTHttpClient.is_valid_prop_result(
-                            result, params)):
+                            result, request.params)):
                     continue
                 self._refresh_props_list.pop(key)
                 self.__on_prop_msg(params=result, ctx=None)
@@ -2160,16 +2170,14 @@ class MIoTClient:
 
     @final
     async def __refresh_props_from_gw(
-        self, attempted: Optional[set[str]] = None,
-        deferred: Optional[set[str]] = None
+        self, attempted: dict[str, _MIoTPropertyRefresh], deferred: set[str]
     ) -> bool:
         if self._ctrl_mode != CtrlMode.AUTO or not self._mips_local:
             return False
-        attempted = attempted if attempted is not None else set()
-        deferred = deferred if deferred is not None else set()
         requests = {}
         requested_devices = set()
-        for key, params in list(self._refresh_props_list.items()):
+        for key, request in list(self._refresh_props_list.items()):
+            params = request.params
             did = params['did']
             device = self._device_list_gateway.get(did)
             if (not device or not device.get('online', False)
@@ -2183,35 +2191,35 @@ class MIoTClient:
                 deferred.add(key)
                 continue
             requested_devices.add(did)
-            attempted.add(key)
-            requests[key] = (params, mips.get_prop_async(
+            deferred.discard(key)
+            attempted[key] = request
+            requests[key] = (request, mips.get_prop_async(
                 did=did, siid=params['siid'], piid=params['piid'],
                 timeout_ms=6000))
         results = await asyncio.gather(
             *(item[1] for item in requests.values()), return_exceptions=True)
         succeeded = False
-        for (key, (params, _)), result in zip(requests.items(), results):
+        for (key, (request, _)), result in zip(requests.items(), results):
             if (not MIoTHttpClient.is_valid_prop_value(result)
-                    or self._refresh_props_list.get(key) is not params):
+                    or self._refresh_props_list.get(key) is not request):
                 continue
             self._refresh_props_list.pop(key)
-            self.__on_prop_msg(params={**params, 'value': result}, ctx=None)
+            self.__on_prop_msg(
+                params={**request.params, 'value': result}, ctx=None)
             succeeded = True
         return succeeded
 
     @final
     async def __refresh_props_from_lan(
-        self, attempted: Optional[set[str]] = None,
-        deferred: Optional[set[str]] = None
+        self, attempted: dict[str, _MIoTPropertyRefresh], deferred: set[str]
     ) -> bool:
         if (self._ctrl_mode != CtrlMode.AUTO or not self._miot_lan.init_done
                 or self._mips_local):
             return False
-        attempted = attempted if attempted is not None else set()
-        deferred = deferred if deferred is not None else set()
         requests = {}
         requested_devices = set()
-        for key, params in list(self._refresh_props_list.items()):
+        for key, request in list(self._refresh_props_list.items()):
+            params = request.params
             did = params['did']
             device = self._device_list_lan.get(did)
             if not device or not device.get('online', False):
@@ -2220,19 +2228,21 @@ class MIoTClient:
                 deferred.add(key)
                 continue
             requested_devices.add(did)
-            attempted.add(key)
-            requests[key] = (params, self._miot_lan.get_prop_async(
+            deferred.discard(key)
+            attempted[key] = request
+            requests[key] = (request, self._miot_lan.get_prop_async(
                 did=did, siid=params['siid'], piid=params['piid'],
                 timeout_ms=6000))
         results = await asyncio.gather(
             *(item[1] for item in requests.values()), return_exceptions=True)
         succeeded = False
-        for (key, (params, _)), result in zip(requests.items(), results):
+        for (key, (request, _)), result in zip(requests.items(), results):
             if (not MIoTHttpClient.is_valid_prop_value(result)
-                    or self._refresh_props_list.get(key) is not params):
+                    or self._refresh_props_list.get(key) is not request):
                 continue
             self._refresh_props_list.pop(key)
-            self.__on_prop_msg(params={**params, 'value': result}, ctx=None)
+            self.__on_prop_msg(
+                params={**request.params, 'value': result}, ctx=None)
             succeeded = True
         return succeeded
 
@@ -2248,8 +2258,8 @@ class MIoTClient:
     async def __refresh_props_handler(self) -> None:
         if not self._refresh_props_list:
             return
-        pending = set(self._refresh_props_list)
-        attempted: set[str] = set()
+        pending = self._refresh_props_list.copy()
+        attempted: dict[str, _MIoTPropertyRefresh] = {}
         deferred: set[str] = set()
         await self.__refresh_props_from_cloud(
             attempted=attempted, deferred=deferred)
@@ -2258,22 +2268,17 @@ class MIoTClient:
         if self._refresh_props_list:
             await self.__refresh_props_from_lan(attempted, deferred)
 
-        # One initial attempt and at most three retries per pending property.
-        # Successful unrelated properties cannot reset a failed one's budget.
+        # A local device gets one slot per cycle. Waiting for that slot
+        # must not consume an attempt, even if the cloud batch omitted it.
         expired_count = 0
-        for key in list(self._refresh_props_list):
-            if (key in deferred or key not in pending) and key not in attempted:
+        for key, request in list(self._refresh_props_list.items()):
+            if (key in deferred or (pending.get(key) is not request
+                    and attempted.get(key) is not request)):
                 continue
-            count = self._refresh_props_retry_count.get(key, 0) + 1
-            if count >= 4:
+            request.attempts += 1
+            if request.attempts >= REFRESH_PROPS_MAX_ATTEMPTS:
                 self._refresh_props_list.pop(key)
-                self._refresh_props_retry_count.pop(key, None)
                 expired_count += 1
-            else:
-                self._refresh_props_retry_count[key] = count
-        self._refresh_props_retry_count = {
-            key: count for key, count in self._refresh_props_retry_count.items()
-            if key in self._refresh_props_list}
         if expired_count:
             _LOGGER.info('refresh retry limit reached, %d properties',
                          expired_count)
@@ -2282,7 +2287,8 @@ class MIoTClient:
             self._refresh_props_timer = None
         if not self._refresh_props_list:
             return
-        retrying = any(key in self._refresh_props_list for key in attempted)
+        retrying = any(self._refresh_props_list.get(key) is request
+                       for key, request in attempted.items())
         self._refresh_props_timer = self._main_loop.call_later(
             REFRESH_PROPS_RETRY_DELAY if retrying else REFRESH_PROPS_DELAY,
             self.__start_refresh_props)
