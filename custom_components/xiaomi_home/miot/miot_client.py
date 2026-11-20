@@ -735,13 +735,13 @@ class MIoTClient:
     def manual_scene_available(self, key: str) -> bool:
         return self.manual_scene_route(key) is not None
 
-    async def __invalidate_scene_route_async(self, group: str) -> None:
+    def __invalidate_scene_route(self, group: str) -> Optional[asyncio.Task]:
         self._scene_routes.pop(group, None)
         self.__notify_manual_scene_state()
         task = self._scene_route_tasks.get(group)
-        if task:
+        if task and not task.cancelling():
             task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
+        return task
 
     async def __refresh_scene_route_async(
         self, group: str, route: _MIoTSceneRoute
@@ -806,9 +806,12 @@ class MIoTClient:
 
     def __request_scene_route_refresh(self, group: Optional[str]) -> None:
         if (not self._manual_scenes_enabled or self._ctrl_mode != CtrlMode.AUTO
-                or group is None or group in self._scene_route_tasks
+                or group is None
                 or not any(home.get('group_id') == group for home in
                            self._entry_data['home_selected'].values())):
+            return
+        task = self._scene_route_tasks.get(group)
+        if task and not task.done():
             return
         client = self._mips_local.get(group)
         if client is None or not client.mips_state:
@@ -1520,7 +1523,9 @@ class MIoTClient:
                 and mips.port == data['port']
             ):
                 return
-            await self.__invalidate_scene_route_async(group_id)
+            # Consecutive discovery updates must replace the current client
+            # before another callback can observe it.
+            self.__invalidate_scene_route(group_id)
             mips.disconnect()
             self._mips_local.pop(group_id, None)
         home_name: str = ''
@@ -1599,7 +1604,9 @@ class MIoTClient:
             # The connection to the central hub gateway is definitely broken.
             self.__show_central_state_changed_notify(False)
             return
-        await self.__invalidate_scene_route_async(group_id)
+        task = self.__invalidate_scene_route(group_id)
+        if task:
+            await asyncio.gather(task, return_exceptions=True)
         if (self._mips_local.get(group_id) is not mips
                 or mips.mips_state != state):
             return
